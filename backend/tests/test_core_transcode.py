@@ -696,7 +696,7 @@ def test_probe_media(monkeypatch):
     assert await_args is not None
     args = await_args.args
     assert (
-        "format=duration:chapter=id,start_time,end_time:chapter_tags=title:"
+        "format=duration,bit_rate:chapter=id,start_time,end_time:chapter_tags=title:"
         "stream=index,codec_type,codec_name,profile,"
         "bits_per_sample,bits_per_raw_sample,avg_frame_rate,r_frame_rate,"
         "pix_fmt,width,height,"

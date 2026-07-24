@@ -72,14 +72,68 @@
 </script>
 
 <script lang="ts">
-  import { Badge, Button, Cell, Image, Rating, Ranking, Uploader, downloadPrompt } from '$lib/components';
+  import {
+    Badge,
+    Button,
+    Cell,
+    Image,
+    Rating,
+    Ranking,
+    Uploader,
+    comicDownloadPrompt,
+    downloadPrompt,
+    hasComicDownload,
+    hasPlaybackLinks,
+    playbackLinksPrompt
+  } from '$lib/components';
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
   import { user } from '$lib/stores';
+  import type { Resp } from '$lib/types';
+  import { isDashSupported } from '$lib/utils';
+  import { UAParser } from 'ua-parser-js';
 
   let { indexerId, indexerConfig, mode, rsrc, coverRatio, searchButton }: SearchHitProps = $props();
   let detailsConfig = $derived(indexerConfig.details);
   let hasRanking = $derived(rsrc.ranking !== null && rsrc.ranking !== undefined);
+  let resolvingLinks = $state(false);
+  let playable = $derived(
+    (rsrc.media_type ?? detailsConfig?.specific?.media_type) === 'video' &&
+      (hasPlaybackLinks(rsrc) || (!!indexerId && !!rsrc.id && !!detailsConfig))
+  );
+
+  /** Resolve details when needed, then display all available playback URLs. */
+  async function showPlaybackLinks() {
+    if (hasPlaybackLinks(rsrc)) {
+      playbackLinksPrompt(rsrc);
+      return;
+    }
+    if (!indexerId || !rsrc.id || !detailsConfig || resolvingLinks) return;
+
+    resolvingLinks = true;
+    try {
+      const userAgent = UAParser(navigator.userAgent);
+      const { data } = await api
+        .post(`flow/graph/${indexerId}/execute`, {
+          json: {
+            $start: 'details_start',
+            id: rsrc.id,
+            dash_supported: isDashSupported(),
+            ua: {
+              ...userAgent,
+              navigator: {
+                platform: navigator.platform,
+                maxTouchPoints: navigator.maxTouchPoints
+              }
+            }
+          }
+        })
+        .json<Resp<Resource | null>>();
+      if (data) playbackLinksPrompt(data);
+    } finally {
+      resolvingLinks = false;
+    }
+  }
 
   /**
    * Mark a resource as favorite.
@@ -130,6 +184,10 @@
     }
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const searchParams = new URLSearchParams();
+    // Preserve the exact resource ID. Route normalization can otherwise remove a
+    // trailing slash from URL-shaped IDs and make the details workflow resolve a
+    // different page.
+    searchParams.set('resource_id', rsrcId);
     if (detailsConfig && detailsConfig.specific) {
       for (const [key, value] of Object.entries(detailsConfig.specific)) {
         if (value) {
@@ -190,7 +248,20 @@
         onclick: () => (rsrc.favorite ? unfavorite(rsrc) : favorite(rsrc))
       },
       {
-        condition: !!rsrc.link && $user?.role === 'admin',
+        condition: playable,
+        loading: resolvingLinks,
+        icon: icons.info,
+        text: $_('media.playback_links'),
+        onclick: showPlaybackLinks
+      },
+      {
+        condition: hasComicDownload(rsrc) && $user?.role === 'admin',
+        icon: icons.download,
+        text: $_('action.download'),
+        onclick: () => comicDownloadPrompt(rsrc)
+      },
+      {
+        condition: !!rsrc.link && !hasComicDownload(rsrc) && $user?.role === 'admin',
         icon: icons.download,
         text: $_('action.download'),
         onclick: () => downloadPrompt(rsrc.link)
@@ -219,7 +290,7 @@
       {:else}
         <Rating score={rsrc.rating} class="absolute top-1 left-1 z-1 text-[clamp(0.75rem,7cqw,0.875rem)]" />
       {/if}
-      <div class="absolute top-0 right-0 z-1 flex gap-2 p-1 opacity-0 group-hover:opacity-100 {transClass}">
+      <div class="absolute top-0 right-0 z-1 flex flex-col gap-2 p-1 opacity-0 group-hover:opacity-100 {transClass}">
         {#if detailsConfig && rsrc.favorite !== undefined}
           <Button
             icon={rsrc.favorite ? icons.starFilled : icons.star}
@@ -230,7 +301,28 @@
             }}
           />
         {/if}
-        {#if rsrc.link && $user?.role === 'admin'}
+        {#if playable}
+          <Button
+            icon={icons.info}
+            title={$_('media.playback_links')}
+            loading={resolvingLinks}
+            class={btnClass}
+            onclick={(event) => {
+              event.stopPropagation();
+              void showPlaybackLinks();
+            }}
+          />
+        {/if}
+        {#if hasComicDownload(rsrc) && $user?.role === 'admin'}
+          <Button
+            icon={icons.download}
+            class={btnClass}
+            onclick={(event) => {
+              event.stopPropagation();
+              comicDownloadPrompt(rsrc);
+            }}
+          />
+        {:else if rsrc.link && $user?.role === 'admin'}
           <Button
             icon={icons.download}
             class={btnClass}

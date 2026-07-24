@@ -170,12 +170,14 @@ export default class DefaultPreset {
 function guessVideoType(url?: IUrl): string | null {
   if (typeof url === 'string') {
     url = url.toLowerCase();
-    if (url.indexOf('.mp4') > -1) {
+    // Some HLS paths contain an MP4 directory component, for example
+    // `video.mp4/master.m3u8`; match the final manifest type first.
+    if (url.indexOf('.m3u8') > -1) {
+      return 'hls';
+    } else if (url.indexOf('.mp4') > -1) {
       return 'mp4';
     } else if (url.indexOf('.flv') > -1) {
       return 'flv';
-    } else if (url.indexOf('.m3u8') > -1) {
-      return 'hls';
     } else if (url.indexOf('.mpd') > -1 || url.startsWith('data:application/dash+xml')) {
       return 'dash';
     }

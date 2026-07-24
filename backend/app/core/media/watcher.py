@@ -255,10 +255,12 @@ class LibWatcher:
         """
         while True:
             try:
-                if not events.empty():
-                    event: MediaEvent = events.get_nowait()
-                    await consume_event(event)
-                await asyncio.sleep(1)
+                if events.empty():
+                    await asyncio.sleep(0.25)
+                    continue
+                event: MediaEvent = events.get_nowait()
+                await consume_event(event)
+                await asyncio.sleep(0)
             except queue.Empty:
                 continue
             except asyncio.CancelledError:

@@ -37,6 +37,12 @@ class IDs(BaseModel):
     )
 
 
+class ResourceRename(BaseModel):
+    """A new filesystem resource name."""
+
+    name: str = Field(min_length=1, max_length=255)
+
+
 class KVPair(BaseModel):
     """A key-value pair."""
 

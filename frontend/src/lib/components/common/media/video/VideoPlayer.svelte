@@ -15,6 +15,12 @@
     width?: string;
     /** The height of the container. */
     height?: string;
+    /** Whether horizontal seek gestures are enabled. */
+    gestureX?: boolean;
+    /** Whether playback should be recorded in watch history. */
+    /** Whether the player top bar should show its back button. */
+    recordWatchHistory?: boolean;
+    showBack?: boolean;
   };
 
   /**
@@ -26,9 +32,16 @@
     width: string | number;
     height: string | number;
     autoplay: boolean;
+    autoplayFallbackMuted: boolean;
+    muted: boolean;
     startTime: number;
+    randomStart: boolean;
     /** The type of the video source, e.g., 'mp4', 'flv', 'hls', etc. */
     videoType: string;
+    /** Whether a remote source should be streamed through the application server. */
+    proxy: boolean;
+    /** The source page to send as the upstream Referer when proxying. */
+    referer: string;
     /** The danmakus (video comments) to be displayed on the video. */
     danmakus: Danmaku[];
     /** The video chapters for TV shows or multi-part videos. */
@@ -71,7 +84,12 @@
    * @param videoType - The source video type.
    * @returns A URL value xgplayer can consume.
    */
-  function resolvePlaybackUrl(url: string, videoType?: string | null): string {
+  function resolvePlaybackUrl(
+    url: string,
+    videoType?: string | null,
+    proxy: boolean = false,
+    referer?: string | null
+  ): string {
     // dash sources are passed as inline MPD XML strings; normal URLs should stay untouched
     if (videoType?.toLowerCase() === 'dash' && /^\s*(?:<\?xml[\s\S]*?)?<MPD[\s>]/i.test(url)) {
       const origin = globalThis.location?.origin ?? '';
@@ -86,6 +104,17 @@
         binary += String.fromCharCode(byte);
       }
       return `data:application/dash+xml;base64,${btoa(binary)}`;
+    }
+    // RedTube's CDN signs the complete HLS URL and supports direct browser
+    // playback. Other HLS sources still benefit from playlist/segment proxying.
+    const isHls = videoType?.toLowerCase() === 'hls' || /\.m3u8(?:[?#]|$)/i.test(url);
+    const isDirectSignedHls = isHls && /^https?:\/\/(?:[^/]+\.)?rdtcdn\.com(?:[/:]|$)/i.test(url);
+    if (proxy && !isDirectSignedHls && /^https?:\/\//i.test(url)) {
+      const params = new URLSearchParams({ url });
+      if (referer) {
+        params.set('referer', referer);
+      }
+      return `/_api/media/proxy?${params.toString()}`;
     }
     return url;
   }
@@ -141,7 +170,13 @@
   import DefaultPreset from './plugins/preset';
   import VideoSettings, { formatDanmakus } from './VideoSettings.svelte';
 
-  const { width = '100%', height = '100%' }: VideoPlayerOptions = $props();
+  const {
+    width = '100%',
+    height = '100%',
+    gestureX = true,
+    recordWatchHistory = true,
+    showBack = true
+  }: VideoPlayerOptions = $props();
   // player ID
   const id: string = `player-${uuidv4()}`;
   // video container
@@ -241,7 +276,10 @@
     if (options.definitions && options.definitions.length > 0) {
       return options.definitions
         .filter((d) => d.url && d.definition)
-        .map((d) => ({ ...d, url: resolvePlaybackUrl(d.url, options.videoType) }))
+        .map((d) => ({
+          ...d,
+          url: resolvePlaybackUrl(d.url, options.videoType, options.proxy, options.referer)
+        }))
         .filter((d) => d.url);
     }
     return [];
@@ -290,13 +328,23 @@
       return;
     }
 
-    let url = resolvePlaybackUrl(options.url, options.videoType);
+    let url = resolvePlaybackUrl(options.url, options.videoType, options.proxy, options.referer);
+    const remoteMp4 =
+      options.proxy &&
+      !options.videoType &&
+      /\.mp4(?:[/?#]|$)/i.test(options.url) &&
+      !/\.m3u8(?:[?#]|$)/i.test(options.url);
+    // Remote signed MP4 files are more reliable through the browser's native
+    // media pipeline than xgplayer's MSE parser, especially across redirects.
+    const playerVideoType = remoteMp4 ? 'native' : options.videoType;
 
     // reset the transcode auto-retry flag so a new video gets its own retry
     transcodeRetriedUrl = null;
 
     // probe the media to get the duration and progress dots
     const { duration, progressDot } = await videoSettings.probeMedia(url);
+    const startTime =
+      options.startTime ?? (options.randomStart && duration > 1 ? duration * (0.1 + Math.random() * 0.7) : undefined);
 
     // if the player is already mounted, just switch the URL
     if (player) {
@@ -317,8 +365,9 @@
       width: options.width ?? width,
       height: options.height ?? height,
       autoplay: options.autoplay ?? true,
-      startTime: options.startTime ?? undefined,
-      videoType: options.videoType,
+      muted: options.muted ?? false,
+      startTime: startTime,
+      videoType: playerVideoType,
       progressDot: progressDot,
       customDuration: duration,
       // bind the video settings component to the player config
@@ -398,6 +447,30 @@
       miniprogress: true,
       pip: true
     });
+
+    if (options.autoplayFallbackMuted) {
+      const mountedPlayer = player;
+      let retrying = false;
+      const ensurePlayback = async () => {
+        if (retrying || !mountedPlayer.paused) return;
+        retrying = true;
+        try {
+          await mountedPlayer.play();
+        } catch {
+          mountedPlayer.muted = true;
+          try {
+            await mountedPlayer.play();
+          } catch {
+            // Keep the normal play control available if the browser rejects both attempts.
+          }
+        } finally {
+          retrying = false;
+        }
+      };
+      mountedPlayer.once(Events.CANPLAY, ensurePlayback);
+      window.setTimeout(ensurePlayback, 500);
+    }
+
     // customize the player
     listenEvents(player);
     usePluginHooks(player);
@@ -414,7 +487,7 @@
     player.once(Events.PLAYING, () => {
       // enable the gestures on mobile devices
       if (mobilePlugin) {
-        mobilePlugin.config.gestureX = true;
+        mobilePlugin.config.gestureX = gestureX;
         mobilePlugin.config.disablePress = false;
       }
       // enable the auto-hide for the top bar
@@ -550,6 +623,10 @@
     }
   }
 
+  export function playbackPosition(): number {
+    return player?.currentTime ?? 0;
+  }
+
   onMount(() => {
     // add the event listener for orientation change on mobile devices
     const isMobile = sniffer.isMobile();
@@ -561,7 +638,9 @@
     return () => {
       freeze.set(false);
       // destroy the player instance
-      recordHistory(player);
+      if (recordWatchHistory) {
+        recordHistory(player);
+      }
       player?.destroy();
       // remove the event listener
       if (isMobile) {
@@ -580,7 +659,7 @@
 </script>
 
 <!-- The video player container. -->
-<div bind:this={container} class="relative" style:width style:height>
+<div bind:this={container} class="relative" class:back-hidden={!showBack} style:width style:height>
   <div {id}></div>
 
   <!-- The danmaku container. -->
@@ -806,5 +885,9 @@
         }
       }
     }
+  }
+
+  .back-hidden :global(.back-icon) {
+    display: none !important;
   }
 </style>

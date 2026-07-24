@@ -1,7 +1,8 @@
 """Remote resource proxy utilities."""
 
+import re
 from collections.abc import Mapping
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from pydantic import BaseModel, Field
 
@@ -10,8 +11,13 @@ from app.core.exceptions import ForbiddenException
 SENSITIVE_REQUEST_HEADERS = {
     "authorization",
     "cookie",
+    "origin",
     "proxy",
     "proxy-authorization",
+    "sec-fetch-dest",
+    "sec-fetch-mode",
+    "sec-fetch-site",
+    "sec-fetch-user",
 }
 
 PROXY_RESPONSE_HEADERS = [
@@ -27,6 +33,14 @@ PROXY_RESPONSE_HEADERS = [
     "last-modified",
 ]
 
+HLS_CONTENT_TYPES = {
+    "application/mpegurl",
+    "application/vnd.apple.mpegurl",
+    "audio/mpegurl",
+    "audio/x-mpegurl",
+}
+HLS_URI_RE = re.compile(r'URI=(?P<quote>["\'])(?P<url>.*?)(?P=quote)')
+
 
 class RemoteProxy(BaseModel):
     """Request model for proxying a remote resource."""
@@ -35,6 +49,47 @@ class RemoteProxy(BaseModel):
     store: bool = False
     referer: str | None = None
     ua: str | None = None
+
+
+def _remote_media_proxy_url(url: str, referer: str | None, ua: str | None) -> str:
+    """Build an application proxy URL for an HLS child resource."""
+    params = {"url": url}
+    if referer:
+        params["referer"] = referer
+    if ua:
+        params["ua"] = ua
+    return f"/_api/media/proxy?{urlencode(params)}"
+
+
+def rewrite_hls_playlist(
+    content: str,
+    playlist_url: str,
+    referer: str | None,
+    ua: str | None,
+) -> str:
+    """Resolve and proxy every URI referenced by an HLS playlist."""
+
+    def proxied(value: str) -> str:
+        if value.startswith("data:"):
+            return value
+        return _remote_media_proxy_url(urljoin(playlist_url, value), referer, ua)
+
+    lines: list[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            leading = line[: len(line) - len(line.lstrip())]
+            line = f"{leading}{proxied(stripped)}"
+        elif "URI=" in line:
+            line = HLS_URI_RE.sub(
+                lambda match: (
+                    f"URI={match.group('quote')}"
+                    f"{proxied(match.group('url'))}{match.group('quote')}"
+                ),
+                line,
+            )
+        lines.append(line)
+    return "\n".join(lines) + ("\n" if content.endswith(("\n", "\r")) else "")
 
 
 def remote_proxy_request(
@@ -83,7 +138,6 @@ def remote_proxy_request(
         for key, value in (request_headers or {}).items()
         if str(key).lower() not in dropped
     }
-    headers["Host"] = parsed.netloc
     headers["Referer"] = referer or url
     if user_agent:
         headers["User-Agent"] = user_agent

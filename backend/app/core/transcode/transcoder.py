@@ -309,7 +309,7 @@ async def probe_media(media_path: str) -> MediaProbe:
         "quiet",
         "-show_entries",
         (
-            "format=duration:chapter=id,start_time,end_time:chapter_tags=title:"
+            "format=duration,bit_rate:chapter=id,start_time,end_time:chapter_tags=title:"
             "stream=index,codec_type,codec_name,profile,"
             "bits_per_sample,bits_per_raw_sample,avg_frame_rate,r_frame_rate,"
             "pix_fmt,width,height,"
@@ -348,7 +348,12 @@ async def probe_media(media_path: str) -> MediaProbe:
 
     duration = None
     format_data = data.get("format")
+    bitrate = None
     if isinstance(format_data, dict):
+        raw_bitrate = format_data.get("bit_rate")
+        if isinstance(raw_bitrate, (str, int, float)):
+            with contextlib.suppress(ValueError, TypeError):
+                bitrate = _optional_int(raw_bitrate, positive=True)
         raw_duration = format_data.get("duration")
         if isinstance(raw_duration, (str, int, float)):
             with contextlib.suppress(ValueError, TypeError):
@@ -532,6 +537,7 @@ async def probe_media(media_path: str) -> MediaProbe:
         rotation=rotation,
         field_order=field_order,
         duration=duration,
+        bitrate=bitrate,
         chapters=tuple(chapters),
         avg_frame_rate=avg_frame_rate,
         r_frame_rate=r_frame_rate,

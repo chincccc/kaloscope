@@ -10,6 +10,7 @@ from sanic.log import Colors, logger
 from app.core.constants import ENCODING, NFO_MIME_TYPE
 from app.core.flow.context import RETVAL_KEY, Context
 from app.core.media.handlers.base import MediaMeta, get_handler
+from app.core.media.thumbnails import POSTER_SOURCE_CUSTOM
 from app.core.renderer import render
 from app.models.media import LibType, MediaItem, MediaLib, NFOType
 from app.utils.extractor import extract_title
@@ -225,6 +226,7 @@ async def update_metadata(
             "aired": meta.aired,
             "rating": meta.rating,
             "poster": meta.poster,
+            "poster_source": POSTER_SOURCE_CUSTOM if meta.poster else None,
             "backdrop": meta.backdrop,
         }
         if (year := _fallback("year")) is not None:

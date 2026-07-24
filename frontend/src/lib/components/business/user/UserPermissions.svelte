@@ -4,7 +4,7 @@
   import { createLoading } from '$lib/helpers';
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
-  import type { FlowGraph, MediaLib, Page, Resp } from '$lib/types';
+  import type { FlowGraph, Gallery, MediaLib, Page, Resp } from '$lib/types';
 
   // the modal dialog instance
   let modal: Modal;
@@ -19,6 +19,8 @@
   let indexerIds: number[] = $state([]);
   let mediaLibs: MediaLib[] = $state([]);
   let mediaLibIds: number[] = $state([]);
+  let galleries: Gallery[] = $state([]);
+  let galleryIds: number[] = $state([]);
 
   // the loading state
   const loading = createLoading();
@@ -28,7 +30,7 @@
    */
   async function init() {
     type Perm = { rel_type: string; rel_id: number };
-    const [_indexers, _mediaLibs, _perms] = await Promise.all([
+    const [_indexers, _mediaLibs, _galleries, _perms] = await Promise.all([
       api
         .get('flow/graph/list', {
           searchParams: [
@@ -48,6 +50,11 @@
         .then((r) => r.data)
         .catch(() => []),
       api
+        .get('gallery/lib/list')
+        .json<Resp<Gallery[]>>()
+        .then((r) => r.data)
+        .catch(() => []),
+      api
         .get(`user/${userId}/permissions`)
         .json<Resp<Perm[]>>()
         .then((r) => r.data)
@@ -55,8 +62,10 @@
     ]);
     indexers = _indexers;
     mediaLibs = _mediaLibs;
+    galleries = _galleries;
     indexerIds = _perms.filter((p) => p.rel_type === 'indexer').map((p) => p.rel_id);
     mediaLibIds = _perms.filter((p) => p.rel_type === 'media_lib').map((p) => p.rel_id);
+    galleryIds = _perms.filter((p) => p.rel_type === 'gallery').map((p) => p.rel_id);
   }
 
   /**
@@ -76,7 +85,7 @@
     loading.start();
     try {
       await api.post(`user/${userId}/permissions`, {
-        json: { indexer_ids: indexerIds, media_lib_ids: mediaLibIds }
+        json: { indexer_ids: indexerIds, media_lib_ids: mediaLibIds, gallery_ids: galleryIds }
       });
       modal.close();
     } finally {
@@ -137,6 +146,14 @@
     mediaLibIds,
     (id: number) => (mediaLibIds = toggle(mediaLibIds, id)),
     (checked: boolean) => (mediaLibIds = checked ? mediaLibs.map((l) => l.id) : [])
+  )}
+
+  {@render permissions(
+    $_('entity.galleries'),
+    galleries,
+    galleryIds,
+    (id: number) => (galleryIds = toggle(galleryIds, id)),
+    (checked: boolean) => (galleryIds = checked ? galleries.map((gallery) => gallery.id) : [])
   )}
 
   <div class="modal-action">

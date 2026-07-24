@@ -3,22 +3,30 @@
   import { Container, Label, Select, Setting } from '$lib/components';
   import { createLoading } from '$lib/helpers';
   import { _ } from '$lib/i18n';
+  import { icons } from '$lib/icons';
   import { user } from '$lib/stores';
+  import type { RatingDimension, Resp } from '$lib/types';
   import { onMount } from 'svelte';
 
   // the loading state
   const loading = createLoading();
+  let ratingDimensions = $state<RatingDimension[]>([]);
+  let dimensionName = $state('');
+  let dimensionSaving = $state(false);
+  let customDimensionCount = $derived(ratingDimensions.filter((item) => item.removable).length);
 
   // the homepage options
   const homepageOptions = $derived.by(() => {
     const options = [
       { value: '/dashboard', label: 'nav.dashboard.title' },
+      { value: '/feed', label: 'nav.feed.title' },
       { value: '/websearch', label: 'nav.websearch.title' },
       { value: '/medialibs', label: 'nav.medialibs.title' },
+      { value: '/galleries', label: 'nav.galleries.title' },
       { value: '/settings', label: 'nav.settings.title' }
     ];
     if ($user?.role === 'admin') {
-      options.splice(3, 0, { value: '/downloads', label: 'nav.downloads.title' });
+      options.splice(options.length - 1, 0, { value: '/downloads', label: 'nav.downloads.title' });
     }
     return options;
   });
@@ -40,12 +48,46 @@
     }
   }
 
+  async function loadRatingDimensions() {
+    const response = await api.get('rating/dimensions').json<Resp<RatingDimension[]>>();
+    ratingDimensions = response.data;
+  }
+
+  async function addRatingDimension() {
+    const name = dimensionName.trim();
+    if (!name || dimensionSaving) return;
+    dimensionSaving = true;
+    try {
+      const response = await api
+        .post('rating/dimensions', { json: { name } })
+        .json<Resp<RatingDimension>>();
+      ratingDimensions = [...ratingDimensions, response.data];
+      dimensionName = '';
+    } finally {
+      dimensionSaving = false;
+    }
+  }
+
+  async function removeRatingDimension(dimension: RatingDimension) {
+    if (!dimension.removable || dimensionSaving) return;
+    dimensionSaving = true;
+    try {
+      await api.delete(`rating/dimensions/${dimension.key}`);
+      ratingDimensions = ratingDimensions.filter((item) => item.key !== dimension.key);
+    } finally {
+      dimensionSaving = false;
+    }
+  }
+
   onMount(() => {
+    void loadRatingDimensions();
     // refresh user info when mounted
     loading.start();
     user.set(null);
     $effect(() => {
-      $user && loading.end();
+      if ($user) {
+        loading.end();
+      }
     });
   });
 </script>
@@ -76,6 +118,52 @@
           class="w-full"
         />
       </fieldset>
+    </Setting>
+    <Setting title={$_('preference.rating.title')} tip={$_('preference.rating.tip')}>
+      <form
+        class="flex gap-2"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void addRatingDimension();
+        }}
+      >
+        <label class="input min-w-0 flex-1">
+          <iconify-icon icon={icons.star} width="1.1rem" class="opacity-50"></iconify-icon>
+          <input
+            bind:value={dimensionName}
+            maxlength="32"
+            placeholder={$_('preference.rating.placeholder')}
+            autocomplete="off"
+          />
+        </label>
+        <button
+          class="btn btn-square btn-primary"
+          type="submit"
+          disabled={!dimensionName.trim() || dimensionSaving || customDimensionCount >= 4}
+          aria-label={$_('preference.rating.add')}
+          title={$_('preference.rating.add')}
+        >
+          <iconify-icon icon={icons.addCircle} width="1.25rem"></iconify-icon>
+        </button>
+      </form>
+      <div class="mt-2 text-right text-xs tabular-nums opacity-50">
+        {customDimensionCount} / 4
+      </div>
+      <div class="mt-3 divide-y divide-base-300">
+        {#each ratingDimensions as dimension (dimension.key)}
+          <div class="flex min-h-11 items-center gap-3 py-2">
+            <iconify-icon icon={dimension.removable ? icons.star : icons.lockClosed} width="1.1rem" class="opacity-55"></iconify-icon>
+            <span class="min-w-0 flex-1 truncate">{dimension.name}</span>
+            {#if dimension.removable}
+              <button class="btn btn-circle btn-ghost btn-sm" disabled={dimensionSaving} aria-label={$_('preference.rating.remove', { values: { name: dimension.name } })} title={$_('preference.rating.remove', { values: { name: dimension.name } })} onclick={() => void removeRatingDimension(dimension)}>
+                <iconify-icon icon={icons.delete} width="1.1rem"></iconify-icon>
+              </button>
+            {:else}
+              <span class="text-xs opacity-50">{$_('preference.rating.admin_only')}</span>
+            {/if}
+          </div>
+        {/each}
+      </div>
     </Setting>
     <Setting title={$_('preference.dashboard.title')} tip={$_('preference.dashboard.tip')}>
       <div>

@@ -111,6 +111,18 @@ export type Token = {
   user: User;
 };
 
+export type RatingDimension = {
+  key: string;
+  name: string;
+  removable: boolean;
+};
+
+export type RatingValue = {
+  key: string;
+  name: string;
+  score: number;
+};
+
 /**
  * A user account recognized by the application.
  */
@@ -129,8 +141,10 @@ export type User = {
     recent_watches: boolean;
     search_records: number;
     watch_records: number;
+    feed_random_start: boolean;
     landscape_mode: 'rotate' | 'web_api';
-    [key: string]: string | boolean | number;
+    rating_dimensions?: RatingDimension[];
+    [key: string]: string | boolean | number | RatingDimension[] | undefined;
   } | null;
   user_agent: string;
   client_ip: string;
@@ -237,6 +251,30 @@ export type HTTPProxy = {
   pw_length: number;
 };
 
+/** A separately managed image gallery. */
+export type Gallery = {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  dir: string;
+  name: string;
+  priority: number;
+  item_count: number;
+  scanning: boolean;
+};
+
+/** An image indexed in a gallery. */
+export type GalleryItem = {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  dir: string;
+  path: string;
+  name: string;
+  size: number;
+  modified_at: string;
+};
+
 /**
  * A media library managed by the application.
  */
@@ -269,6 +307,12 @@ export type MediaItem = {
   size: number | null;
   visible: boolean;
   nfo_path: string | null;
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  bitrate: number | null;
+  episode_count?: number | null;
+  technical_pending?: boolean;
   nfo_mtime: string | null;
   nfo_source: string | null;
   title: string | null;
@@ -277,8 +321,11 @@ export type MediaItem = {
   season: number | null;
   episode: number | null;
   poster: string | null;
+  poster_source?: 'auto' | 'custom' | null;
   backdrop: string | null;
   rating: number | null;
+  ratings?: RatingValue[];
+  tags?: string[];
   children?: MediaItem[];
   metadata?: MediaMeta | null;
 };
@@ -370,9 +417,11 @@ export type DownloadDir = {
  */
 export type DownloadTask = {
   id: number;
+  key: string;
+  task_type: 'torrent' | 'comic';
   created_at: string;
   updated_at: string;
-  downloader_id: number;
+  downloader_id: number | null;
   dir: string;
   name: string;
   unique_id: string | null;
@@ -396,6 +445,26 @@ export type DownloadTask = {
   transfer_method: keyof typeof TransferMethod | null;
   sub_pattern: string | null;
   sub_repl: string | null;
+};
+
+/** A ZIP/CBZ task managed by the built-in HTTP downloader. */
+export type ComicDownloadTask = {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  gallery_id: number | null;
+  dir: string;
+  name: string;
+  final_path: string;
+  state: keyof typeof DownloadState;
+  error_msg: string | null;
+  dl_speed: number | null;
+  percentage: number | null;
+  total_size: number | null;
+  completed_size: number | null;
+  completed_at: string | null;
+  ratio: string;
+  estimate: string;
 };
 
 /**
@@ -660,6 +729,12 @@ export type Resource = Optional<{
   chapters: Chapter[];
   danmakus: Danmaku[];
   favorite: boolean;
+  download: {
+    url: string;
+    filename?: string | null;
+    headers?: Record<string, string> | null;
+    gallery_id?: number | null;
+  };
 }>;
 
 /**

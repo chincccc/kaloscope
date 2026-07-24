@@ -34,7 +34,7 @@
   const pagination: PaginatorProps = $state({ current: 1, size: 50, onchange: search });
   const ordering = createSortField();
   const loading = createLoading();
-  const loadingIds = new SvelteSet<number>();
+  const loadingIds = new SvelteSet<string>();
 
   /**
    * Search for download tasks.
@@ -88,7 +88,7 @@
       headerCheckbox.unselectAll();
       return;
     }
-    const currentKeys = new Set(tasks.map((task) => String(task.id)));
+    const currentKeys = new Set(tasks.map((task) => task.key));
     const selectedKeys = headerCheckbox.getSelectedKeys();
     const nextKeys = selectedKeys.filter((key) => currentKeys.has(key));
     selectedKeys.splice(0, selectedKeys.length, ...nextKeys);
@@ -98,11 +98,8 @@
    * Delete selected download tasks.
    */
   function batchDelete() {
-    const currentKeys = new Set(tasks.map((task) => String(task.id)));
-    const ids = headerCheckbox
-      .getSelectedKeys()
-      .filter((key) => currentKeys.has(key))
-      .map(Number);
+    const currentKeys = new Set(tasks.map((task) => task.key));
+    const ids = headerCheckbox.getSelectedKeys().filter((key) => currentKeys.has(key));
     if (ids.length === 0) {
       alert({ message: 'select_delete_items' });
       return;
@@ -116,19 +113,20 @@
    * @param task - The download task.
    */
   function pause(task: DownloadTask) {
-    loadingIds.add(task.id);
+    loadingIds.add(task.key);
     const startTime = new Date().getTime();
+    const endpoint = task.task_type === 'comic' ? 'download/comic/pause' : 'download/pause';
     api
-      .post('download/pause', { json: { ids: [task.id] } })
+      .post(endpoint, { json: { ids: [task.id] } })
       .then(() => {
         const timeout = Math.max(0, 450 - (new Date().getTime() - startTime));
         setTimeout(() => {
           task.state = 'paused';
-          loadingIds.delete(task.id);
+          loadingIds.delete(task.key);
         }, timeout);
       })
       .catch(() => {
-        loadingIds.delete(task.id);
+        loadingIds.delete(task.key);
       });
   }
 
@@ -138,19 +136,20 @@
    * @param task - The download task.
    */
   function start(task: DownloadTask) {
-    loadingIds.add(task.id);
+    loadingIds.add(task.key);
     const startTime = new Date().getTime();
+    const endpoint = task.task_type === 'comic' ? 'download/comic/start' : 'download/start';
     api
-      .post('download/start', { json: { ids: [task.id] } })
+      .post(endpoint, { json: { ids: [task.id] } })
       .then(() => {
         const timeout = Math.max(0, 450 - (new Date().getTime() - startTime));
         setTimeout(() => {
           task.state = 'downloading';
-          loadingIds.delete(task.id);
+          loadingIds.delete(task.key);
         }, timeout);
       })
       .catch(() => {
-        loadingIds.delete(task.id);
+        loadingIds.delete(task.key);
       });
   }
 
@@ -192,7 +191,7 @@
   });
 </script>
 
-<DataView dvh rowSelect loading={$loading} data={tasks} uniqueKey="id">
+<DataView dvh rowSelect loading={$loading} data={tasks} uniqueKey="key">
   {#snippet filters()}
     <Select
       filter
@@ -227,12 +226,14 @@
   {/snippet}
   {#snippet row(task)}
     <Cell>
-      <Checkbox key={String(task.id)} />
+      <Checkbox key={task.key} />
     </Cell>
     <Cell class="max-lg:hidden">
       {@const downloader = downloaders.find((d) => d.id === task.downloader_id)}
       {#if downloader}
         <Badge>{downloader.name}</Badge>
+      {:else if task.task_type === 'comic'}
+        <Badge>{$_('download.builtin')}</Badge>
       {/if}
     </Cell>
     <Cell>
@@ -255,7 +256,11 @@
         {/if}
         <div class="flex justify-between gap-2 text-xs opacity-50">
           <span>{task.ratio}</span>
-          <span>{task.estimate}</span>
+          <span>
+            {task.task_type === 'comic' && task.total_size === null && !task.dl_speed
+              ? $_('download.waiting_response')
+              : task.estimate}
+          </span>
         </div>
       </div>
     </Cell>
@@ -263,15 +268,15 @@
       actions={[
         {
           condition: task.state === 'downloading',
-          loading: loadingIds.has(task.id),
+          loading: loadingIds.has(task.key),
           class: '[&_iconify-icon]:text-surface/80',
           icon: icons.pauseFilled,
           text: $_('action.pause', $_('entity.task')),
           onclick: () => pause(task)
         },
         {
-          condition: task.state === 'paused',
-          loading: loadingIds.has(task.id),
+          condition: task.state === 'paused' || (task.task_type === 'comic' && task.state === 'error'),
+          loading: loadingIds.has(task.key),
           class: '[&_iconify-icon]:text-surface/80',
           icon: icons.playFilled,
           text: $_('action.start', $_('entity.task')),
@@ -286,7 +291,7 @@
         {
           icon: icons.delete,
           text: $_('action.delete', $_('entity.task')),
-          onclick: () => deleteConfirm.showModal(task.id)
+          onclick: () => deleteConfirm.showModal(task.key)
         }
       ]}
     />
@@ -296,4 +301,8 @@
   {/snippet}
 </DataView>
 
-<DownloadDelConfirm bind:this={deleteConfirm} onconfirm={() => search(pagination.current)} />
+<DownloadDelConfirm
+  bind:this={deleteConfirm}
+  endpoint="download/combined/delete"
+  onconfirm={() => search(pagination.current)}
+/>

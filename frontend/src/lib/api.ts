@@ -82,6 +82,11 @@ export function proxyImage(url: string | null, policy: boolean | 'auto' | 'store
     return url;
   }
 
+  // Browser-local resources must never be sent through the server-side proxy.
+  if (url.startsWith('blob:') || url.startsWith('data:')) {
+    return url;
+  }
+
   // serve icons and avatars directly from the API endpoint
   if (url.startsWith('icons/') || url.startsWith('avatars/')) {
     return `/_api/${url}`;

@@ -32,6 +32,7 @@ class HistoryType(StrEnum):
 class PermType(StrEnum):
     INDEXER = auto()
     MEDIA_LIB = auto()
+    GALLERY = auto()
 
 
 # -------------------- ORM Models --------------------
@@ -124,6 +125,7 @@ class UserPermission(TortoiseModel):
 class Permissions(BaseModel):
     indexer_ids: list[PositiveInt] = Field(max_length=999, default_factory=list)
     media_lib_ids: list[PositiveInt] = Field(max_length=999, default_factory=list)
+    gallery_ids: list[PositiveInt] = Field(max_length=999, default_factory=list)
 
 
 class UserInfo(BaseModel):

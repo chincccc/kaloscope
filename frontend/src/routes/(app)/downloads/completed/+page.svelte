@@ -82,7 +82,7 @@
       headerCheckbox.unselectAll();
       return;
     }
-    const currentKeys = new Set(tasks.map((task) => String(task.id)));
+    const currentKeys = new Set(tasks.map((task) => task.key));
     const selectedKeys = headerCheckbox.getSelectedKeys();
     const nextKeys = selectedKeys.filter((key) => currentKeys.has(key));
     selectedKeys.splice(0, selectedKeys.length, ...nextKeys);
@@ -92,11 +92,8 @@
    * Delete selected download tasks.
    */
   function batchDelete() {
-    const currentKeys = new Set(tasks.map((task) => String(task.id)));
-    const ids = headerCheckbox
-      .getSelectedKeys()
-      .filter((key) => currentKeys.has(key))
-      .map(Number);
+    const currentKeys = new Set(tasks.map((task) => task.key));
+    const ids = headerCheckbox.getSelectedKeys().filter((key) => currentKeys.has(key));
     if (ids.length === 0) {
       alert({ message: 'select_delete_items' });
       return;
@@ -142,7 +139,7 @@
   });
 </script>
 
-<DataView dvh rowSelect loading={$loading} data={tasks} uniqueKey="id">
+<DataView dvh rowSelect loading={$loading} data={tasks} uniqueKey="key">
   {#snippet filters()}
     <Select
       filter
@@ -171,12 +168,14 @@
   {/snippet}
   {#snippet row(task)}
     <Cell>
-      <Checkbox key={String(task.id)} />
+      <Checkbox key={task.key} />
     </Cell>
     <Cell class="max-lg:hidden">
       {@const downloader = downloaders.find((d) => d.id === task.downloader_id)}
       {#if downloader}
         <Badge>{downloader.name}</Badge>
+      {:else if task.task_type === 'comic'}
+        <Badge>{$_('download.builtin')}</Badge>
       {/if}
     </Cell>
     <Cell>
@@ -201,7 +200,7 @@
         {
           icon: icons.delete,
           text: $_('action.delete', $_('entity.task')),
-          onclick: () => deleteConfirm.showModal(task.id)
+          onclick: () => deleteConfirm.showModal(task.key)
         }
       ]}
     />
@@ -211,4 +210,8 @@
   {/snippet}
 </DataView>
 
-<DownloadDelConfirm bind:this={deleteConfirm} onconfirm={() => search(pagination.current)} />
+<DownloadDelConfirm
+  bind:this={deleteConfirm}
+  endpoint="download/combined/delete"
+  onconfirm={() => search(pagination.current)}
+/>

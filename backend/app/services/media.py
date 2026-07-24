@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import os
 from pathlib import Path
 
 import aiofiles
@@ -9,9 +10,25 @@ from tortoise.expressions import Q
 from tortoise.transactions import atomic
 
 from app.core.exceptions import ErrorCode, KaloscopeException
+from app.core.media.filename_tags import filename_tags, tagged_resource_name
 from app.core.media.handlers.base import MediaPathInfo
+from app.core.resource_rename import (
+    rename_destination,
+    rename_paths,
+    replace_path_prefix,
+    rollback_paths,
+    sidecar_destination,
+)
+from app.core.transcode import probe_media
 from app.models.flow import FlowTrigger, GraphCategory
-from app.models.media import MediaItem, MediaLib, MediaLibUpsert, MediaMetadata, NFOType
+from app.models.media import (
+    LibType,
+    MediaItem,
+    MediaLib,
+    MediaLibUpsert,
+    MediaMetadata,
+    NFOType,
+)
 from app.models.user import PermType, UserPermission
 from app.services.base import BaseService
 from app.services.flow import FlowTriggerService
@@ -120,6 +137,34 @@ class MediaItemService(BaseService[MediaItem], model=MediaItem):
     """The service class for all media item related operations."""
 
     HASH_READ_SIZE = 16 * 1024 * 1024  # 16MB
+    PROBE_SEMAPHORE = asyncio.Semaphore(2)
+    _technical_backfill_ids: set[int] = set()
+    _background_tasks: set[asyncio.Task] = set()
+    _RENAME_LOCK = asyncio.Lock()
+
+    @classmethod
+    def _attach_filename_tags(cls, value):
+        if isinstance(value, dict):
+            path = value.get("path")
+            name = value.get("name")
+            if isinstance(path, str):
+                value["tags"] = filename_tags(Path(path).name)
+            elif isinstance(name, str):
+                value["tags"] = filename_tags(name)
+            for child in value.values():
+                cls._attach_filename_tags(child)
+        elif isinstance(value, list):
+            for child in value:
+                cls._attach_filename_tags(child)
+        return value
+
+    @classmethod
+    async def dump(cls, obj, **kwargs):
+        return cls._attach_filename_tags(await super().dump(obj, **kwargs))
+
+    @classmethod
+    async def dump_list(cls, list, **kwargs):
+        return cls._attach_filename_tags(await super().dump_list(list, **kwargs))
 
     @classmethod
     async def delete(cls, id: int, local: bool = False):
@@ -137,6 +182,114 @@ class MediaItemService(BaseService[MediaItem], model=MediaItem):
             await item.delete()
         else:
             await MediaItem.filter(id=id).update(visible=False)
+
+    @classmethod
+    async def rename(cls, id: int, name: str) -> MediaItem:
+        """Rename a movie, episode, or top-level TV show on disk."""
+        async with cls._RENAME_LOCK:
+            item = await MediaItem.get(id=id).select_related("lib")
+            directory = item.lib.lib_type == LibType.TV_SHOW and item.parent_id is None
+            source = Path(item.path)
+            root = Path(item.lib.dir).resolve()
+            try:
+                source = source.resolve()
+            except OSError as error:
+                raise KaloscopeException(ErrorCode.FILE_NOT_EXISTS) from error
+            if source == root or not source.is_relative_to(root):
+                raise KaloscopeException(ErrorCode.BAD_REQUEST)
+            if directory:
+                if not source.is_dir():
+                    raise KaloscopeException(ErrorCode.FILE_NOT_EXISTS)
+            elif not source.is_file():
+                code = (
+                    ErrorCode.BAD_REQUEST
+                    if source.exists()
+                    else ErrorCode.FILE_NOT_EXISTS
+                )
+                raise KaloscopeException(code)
+
+            destination = rename_destination(source, name, directory=directory)
+            moves = [(source, destination)]
+            path_destinations = {str(source): str(destination)}
+            seen_paths = {source}
+            if not directory:
+                for value in (item.nfo_path, item.danmaku_path):
+                    if not value:
+                        continue
+                    sidecar = Path(value)
+                    if not sidecar.is_file():
+                        continue
+                    if sidecar in seen_paths:
+                        continue
+                    sidecar_target = sidecar_destination(sidecar, source, destination)
+                    if sidecar_target == sidecar:
+                        continue
+                    moves.append((sidecar, sidecar_target))
+                    seen_paths.add(sidecar)
+                    path_destinations[str(sidecar)] = str(sidecar_target)
+
+            await rename_paths(moves)
+            try:
+                if directory:
+                    prefix = f"{source}{os.sep}"
+                    items = await MediaItem.filter(
+                        Q(path=str(source)) | Q(path__startswith=prefix)
+                    )
+                    for current in items:
+                        current.path = replace_path_prefix(
+                            current.path, source, destination
+                        )
+                        current.dir = replace_path_prefix(
+                            current.dir, source, destination
+                        )
+                        current.nfo_path = replace_path_prefix(
+                            current.nfo_path, source, destination
+                        )
+                        current.danmaku_path = replace_path_prefix(
+                            current.danmaku_path, source, destination
+                        )
+                        if current.id == item.id:
+                            current.name = destination.name
+                    if items:
+                        await MediaItem.bulk_update(
+                            items,
+                            fields=[
+                                "path",
+                                "dir",
+                                "name",
+                                "nfo_path",
+                                "danmaku_path",
+                            ],
+                        )
+                else:
+                    item.path = str(destination)
+                    item.dir = str(destination.parent)
+                    item.name = destination.name
+                    item.nfo_path = path_destinations.get(item.nfo_path, item.nfo_path)
+                    item.danmaku_path = path_destinations.get(
+                        item.danmaku_path, item.danmaku_path
+                    )
+                    await item.save(
+                        update_fields=[
+                            "path",
+                            "dir",
+                            "name",
+                            "nfo_path",
+                            "danmaku_path",
+                        ]
+                    )
+            except Exception:
+                await rollback_paths(moves)
+                raise
+            return await MediaItem.get(id=id).select_related("lib")
+
+    @classmethod
+    async def set_tags(cls, id: int, tags: list[str]) -> MediaItem:
+        """Persist tags by rewriting the resource's real filename."""
+        item = await MediaItem.get(id=id).select_related("lib")
+        directory = item.lib.lib_type == LibType.TV_SHOW and item.parent_id is None
+        name = tagged_resource_name(Path(item.path).name, tags, directory=directory)
+        return await cls.rename(id, name)
 
     @classmethod
     async def create(
@@ -159,7 +312,9 @@ class MediaItemService(BaseService[MediaItem], model=MediaItem):
             The media item instance.
         """
         item_path = path_info.item_path
-        item, created = await MediaItem.get_or_create(
+        path = Path(item_path)
+        size = path.stat().st_size if path.is_file() else None
+        item, _ = await MediaItem.get_or_create(
             lib_id=lib_id,
             path=item_path,
             defaults={
@@ -171,31 +326,108 @@ class MediaItemService(BaseService[MediaItem], model=MediaItem):
                 "season": path_info.season,
                 "episode": path_info.episode,
                 "visible": True,
+                "size": size,
             },
         )
-
-        # calculate hash and size for the newly created item
-        if created:
-            asyncio.create_task(cls._hash_and_size(item.id, item_path))
-
         return item
 
     @classmethod
-    async def _hash_and_size(cls, item_id: int, item_path: str):
-        """Calculate and persist the hash and size of a media file.
-
-        Args:
-            item_id: The media item ID.
-            item_path: The file path of the media item.
-        """
-        path = Path(item_path)
+    async def ensure_technical_metadata(cls, item: MediaItem) -> MediaItem:
+        """Probe and cache the technical metadata for one playable file."""
+        if item.duration is not None:
+            return item
+        path = Path(item.path)
         if not path.is_file():
-            return
-        size = path.stat().st_size
-        md5 = hashlib.md5()
-        async with aiofiles.open(path, "rb") as f:
-            md5.update(await f.read(cls.HASH_READ_SIZE))
-        await MediaItem.filter(id=item_id).update(hash=md5.hexdigest(), size=size)
+            return item
+
+        try:
+            async with cls.PROBE_SEMAPHORE:
+                metadata = await probe_media(item.path)
+            size = item.size if item.size is not None else path.stat().st_size
+            duration = (
+                metadata.duration
+                if metadata.duration and metadata.duration > 0
+                else 0.0
+            )
+            bitrate = metadata.bitrate
+            if bitrate is None and duration > 0:
+                bitrate = round(size * 8 / duration)
+            values = {
+                "size": size,
+                "duration": duration,
+                "width": metadata.width,
+                "height": metadata.height,
+                "bitrate": bitrate,
+            }
+            await MediaItem.filter(id=item.id).update(**values)
+            for key, value in values.items():
+                setattr(item, key, value)
+        except Exception:
+            logger.warning(
+                "Failed to probe technical metadata for media item %s",
+                item.id,
+                exc_info=True,
+            )
+        return item
+
+    @classmethod
+    def request_technical_backfill(cls, items: list[MediaItem]) -> bool:
+        """Queue missing technical metadata without delaying the caller."""
+        pending = [
+            item
+            for item in items
+            if item.duration is None
+            and item.size is not None
+            and item.id not in cls._technical_backfill_ids
+        ]
+        if not pending:
+            return False
+        cls._technical_backfill_ids.update(item.id for item in pending)
+        task = asyncio.create_task(cls._run_technical_backfill(pending))
+        cls._background_tasks.add(task)
+        task.add_done_callback(cls._background_tasks.discard)
+        return True
+
+    @classmethod
+    async def _run_technical_backfill(cls, items: list[MediaItem]):
+        try:
+            for offset in range(0, len(items), 8):
+                await asyncio.gather(
+                    *(
+                        cls.ensure_technical_metadata(item)
+                        for item in items[offset : offset + 8]
+                    )
+                )
+        finally:
+            cls._technical_backfill_ids.difference_update(item.id for item in items)
+
+    @staticmethod
+    def technical_summary(items: list[MediaItem]) -> dict[str, int | float | None]:
+        """Aggregate duration, size, bitrate, and peak resolution."""
+        playable = [item for item in items if item.duration is not None]
+        durations = [item.duration or 0 for item in playable]
+        duration = sum(durations)
+        sizes = [item.size for item in playable if item.size is not None]
+        size = sum(sizes) if sizes else None
+        resolution = max(
+            (
+                item
+                for item in playable
+                if item.width is not None and item.height is not None
+            ),
+            key=lambda item: (item.width or 0) * (item.height or 0),
+            default=None,
+        )
+        bitrate = (
+            round(size * 8 / duration) if size is not None and duration > 0 else None
+        )
+        return {
+            "duration": duration,
+            "size": size,
+            "width": resolution.width if resolution else None,
+            "height": resolution.height if resolution else None,
+            "bitrate": bitrate,
+        }
 
     @classmethod
     async def resolve_media_hash(cls, item_path: str) -> str:

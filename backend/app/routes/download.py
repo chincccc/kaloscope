@@ -13,8 +13,13 @@ from app.core.constants import ENCODING
 from app.core.decorators import authorize
 from app.core.dl.adapter import load_config
 from app.core.dl.syncer import DLSyncer
+from app.core.exceptions import ErrorCode, KaloscopeException
 from app.models.base import IDs
 from app.models.download import (
+    ComicDownloadAdd,
+    ComicDownloadDel,
+    ComicDownloadQuery,
+    ComicDownloadTask,
     DownloadAdd,
     DownloadDel,
     DownloadDir,
@@ -24,10 +29,10 @@ from app.models.download import (
     DownloadPlanQuery,
     DownloadPlanUpsert,
     DownloadQuery,
-    DownloadTask,
 )
 from app.models.flow import FlowGraph, GraphState
 from app.models.user import UserRole
+from app.services.comic_download import ComicDownloadService
 from app.services.download import (
     DownloaderService,
     DownloadPlanService,
@@ -165,7 +170,31 @@ async def list_directories(_) -> HTTPResponse:
 @download.get("/list")
 @validate(query=DownloadQuery)
 async def list_tasks(_, query: DownloadQuery) -> HTTPResponse:
-    """List the download tasks."""
+    """List external and built-in download tasks."""
+    return json(await DownloadTaskService.combined_page(query))
+
+
+@download.post("/combined/delete")
+@authorize(role=UserRole.ADMIN)
+@validate(json=DownloadDel)
+async def delete_combined_tasks(_, body: DownloadDel) -> HTTPResponse:
+    for value in body.ids:
+        task_type, separator, task_id = str(value).partition(":")
+        if not separator or not task_id.isdigit():
+            raise KaloscopeException(ErrorCode.BAD_REQUEST)
+        if task_type == "comic":
+            await ComicDownloadService.delete(int(task_id), body.local)
+        elif task_type == "torrent":
+            await DownloadTaskService.delete(int(task_id), body.local)
+        else:
+            raise KaloscopeException(ErrorCode.BAD_REQUEST)
+    return empty()
+
+
+@download.get("/comic/list")
+@authorize(role=UserRole.ADMIN)
+@validate(query=ComicDownloadQuery)
+async def list_comic_tasks(_, query: ComicDownloadQuery) -> HTTPResponse:
     queries = []
     if query.name:
         queries.append(Q(name__icontains=query.name))
@@ -173,10 +202,43 @@ async def list_tasks(_, query: DownloadQuery) -> HTTPResponse:
         queries.append(Q(state=query.state))
     if query.states:
         queries.append(Q(state__in=query.states))
-    if query.downloader_id:
-        queries.append(Q(downloader_id=query.downloader_id))
-    page = await DownloadTask.page(*queries, **query.page_params)
-    return json(await DownloadTaskService.dump_page(page))
+    page = await ComicDownloadTask.page(*queries, **query.page_params)
+    return json(await ComicDownloadService.dump_page(page))
+
+
+@download.post("/comic/add")
+@authorize(role=UserRole.ADMIN)
+@validate(json=ComicDownloadAdd)
+async def add_comic_task(_, body: ComicDownloadAdd) -> HTTPResponse:
+    task = await ComicDownloadService.add(body)
+    return json(await ComicDownloadService.dump(task))
+
+
+@download.post("/comic/pause")
+@authorize(role=UserRole.ADMIN)
+@validate(json=IDs)
+async def pause_comic_tasks(_, body: IDs) -> HTTPResponse:
+    for id in body.ids:
+        await ComicDownloadService.pause(int(id))
+    return empty()
+
+
+@download.post("/comic/start")
+@authorize(role=UserRole.ADMIN)
+@validate(json=IDs)
+async def start_comic_tasks(_, body: IDs) -> HTTPResponse:
+    for id in body.ids:
+        await ComicDownloadService.start(int(id))
+    return empty()
+
+
+@download.post("/comic/delete")
+@authorize(role=UserRole.ADMIN)
+@validate(json=ComicDownloadDel)
+async def delete_comic_tasks(_, body: ComicDownloadDel) -> HTTPResponse:
+    for id in body.ids:
+        await ComicDownloadService.delete(int(id), body.local)
+    return empty()
 
 
 @download.post("/validate")

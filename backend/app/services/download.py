@@ -12,12 +12,14 @@ from app.core.dl.adapter import load_config
 from app.core.dl.syncer import Unique, execute_download_plan
 from app.core.exceptions import ErrorCode, KaloscopeException
 from app.models.download import (
+    ComicDownloadTask,
     DownloadAdd,
     DownloadDir,
     Downloader,
     DownloaderUpsert,
     DownloadPlan,
     DownloadPlanUpsert,
+    DownloadQuery,
     DownloadState,
     DownloadStats,
     DownloadTask,
@@ -157,6 +159,64 @@ class DownloadTaskService(BaseService[DownloadTask], model=DownloadTask):
         )
 
     @classmethod
+    async def combined_page(cls, query: DownloadQuery) -> dict:
+        """Return BitTorrent and built-in comic tasks in one ordered page."""
+        common = []
+        if query.name:
+            common.append(Q(name__icontains=query.name))
+        if query.state:
+            common.append(Q(state=query.state))
+        if query.states:
+            common.append(Q(state__in=query.states))
+
+        torrent_filters = [*common]
+        if query.downloader_id:
+            torrent_filters.append(Q(downloader_id=query.downloader_id))
+        torrent_tasks = await DownloadTask.filter(*torrent_filters)
+        torrent_items = await cls.dump_list(torrent_tasks)
+        for item in torrent_items:
+            item["task_type"] = "torrent"
+            item["key"] = f"torrent:{item['id']}"
+
+        comic_items = []
+        if not query.downloader_id:
+            from app.services.comic_download import ComicDownloadService
+
+            comic_tasks = await ComicDownloadTask.filter(*common)
+            comic_items = await ComicDownloadService.dump_list(comic_tasks)
+            for item in comic_items:
+                item.update(
+                    {
+                        "task_type": "comic",
+                        "key": f"comic:{item['id']}",
+                        "downloader_id": None,
+                        "magnet_link": None,
+                    }
+                )
+
+        items = [*torrent_items, *comic_items]
+        ordering = query.ordering or "-created_at"
+        descending = ordering.startswith("-")
+        field = ordering.removeprefix("-")
+        if field not in {"created_at", "name", "downloader_id", "state"}:
+            field = "created_at"
+            descending = True
+
+        def sort_value(item: dict):
+            value = item.get(field)
+            if value is None:
+                return (True, 0 if field == "downloader_id" else "")
+            normalized = value.casefold() if isinstance(value, str) else value
+            return (False, normalized)
+
+        items.sort(key=sort_value, reverse=descending)
+        total = len(items)
+        if query.page_num > 0:
+            start = (query.page_num - 1) * query.page_size
+            items = items[start : start + query.page_size]
+        return {"total": total, "items": items}
+
+    @classmethod
     @atomic()
     async def add(cls, add: DownloadAdd) -> DownloadTask:
         """Add a download task.
@@ -290,6 +350,28 @@ class DownloadTaskService(BaseService[DownloadTask], model=DownloadTask):
             .filter(state=DownloadState.DOWNLOADING)
             .values("total_dl")
         )[0]["total_dl"] or 0
+        comic_count = (
+            await ComicDownloadTask.annotate(count=Count("id"))
+            .group_by("state")
+            .values("state", "count")
+        )
+        downloading += sum(
+            item["count"]
+            for item in comic_count
+            if item["state"] != DownloadState.COMPLETED
+        )
+        completed += sum(
+            item["count"]
+            for item in comic_count
+            if item["state"] == DownloadState.COMPLETED
+        )
+        comic_speed = (
+            await ComicDownloadTask.annotate(total_dl=Sum("dl_speed"))
+            .filter(state=DownloadState.DOWNLOADING)
+            .values("total_dl")
+        )
+        if comic_speed:
+            dl_speed += comic_speed[0]["total_dl"] or 0
         return DownloadStats(
             downloading=downloading,
             completed=completed,

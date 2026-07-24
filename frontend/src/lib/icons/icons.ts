@@ -66,6 +66,8 @@ const fluentUISystemIcons = {
   globeSearchFilled: 'fluent:globe-search-24-filled',
   grid: 'fluent:grid-24-regular',
   image: 'fluent:image-24-regular',
+  imageMultiple: 'fluent:image-multiple-24-regular',
+  imageMultipleFilled: 'fluent:image-multiple-24-filled',
   info: 'fluent:info-24-regular',
   key: 'fluent:key-24-regular',
   keyFilled: 'fluent:key-24-filled',

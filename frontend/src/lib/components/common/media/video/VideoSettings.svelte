@@ -330,7 +330,7 @@
     }
 
     return {
-      duration: isTranscodedStream(url) ? metadata?.duration : undefined,
+      duration: metadata?.duration,
       progressDot: (metadata?.chapters ?? []).map((chapter) => ({
         id: chapter.id,
         text: chapter.title,

@@ -2,6 +2,7 @@
   import { beforeNavigate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import { api } from '$lib/api';
+  import { authenticatedImage } from '$lib/authenticated-image';
   import {
     Backdrop,
     Container,
@@ -9,12 +10,13 @@
     Image,
     MediaActions,
     Paginator,
-    Rating,
+    RatingBadges,
     Search,
     type PaginatorProps
   } from '$lib/components';
   import { createLoading } from '$lib/helpers';
   import { _ } from '$lib/i18n';
+  import { formatMediaDuration } from '$lib/media-format';
   import { captureScrollPosition, compactRecord, restorePosition, subroutes, user } from '$lib/stores';
   import type { MediaItem, Page, Resp } from '$lib/types';
   import { tick, untrack } from 'svelte';
@@ -168,6 +170,11 @@
       {@const pointerClass = 'cursor-pointer transition-colors hover:text-primary'}
       {@const transClass = 'transition-all duration-300'}
       {@const btnClass = 'text-white hover:bg-base-300 hover:text-base-content'}
+      {@const durationText = formatMediaDuration(item.duration)}
+      {@const coverMeta =
+        item.episode_count !== null && item.episode_count !== undefined
+          ? [$_('media.episode_count', item.episode_count), durationText].filter(Boolean).join(' \u00b7 ')
+          : durationText}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
         tabindex="0"
@@ -176,7 +183,7 @@
         onmouseenter={() => (backdrop = item.backdrop ?? item.poster ?? backdrop)}
         onclick={() => goto(`${page.url.pathname}/${item.id}`)}
       >
-        <Rating score={item.rating} class="absolute top-1 left-1 z-1 text-[clamp(0.875rem,8cqw,1rem)]" />
+        <RatingBadges values={item.ratings} class="absolute top-1 left-1 z-1" />
         <div
           class:hidden={$user?.role !== 'admin'}
           class="absolute right-0 bottom-0 z-1 p-1 opacity-0 group-hover:opacity-100 {transClass}"
@@ -185,17 +192,41 @@
             {item}
             class="dropdown-left dropdown-end"
             triggerClass={btnClass}
+            onedit={() => search()}
+            onrename={() => search()}
+            ontag={() => search()}
             onscrape={() => search()}
             ondelete={() => search()}
           />
         </div>
-        <Image
-          proxy="store"
-          src={item.poster}
-          width="100%"
-          ratio="2/3"
-          class="shadow-sm group-hover:brightness-60 hover:shadow-lg {transClass}"
-        />
+        {#if item.poster}
+          <Image
+            proxy="store"
+            src={item.poster}
+            width="100%"
+            ratio="2/3"
+            class="shadow-sm group-hover:brightness-60 hover:shadow-lg {transClass}"
+          />
+        {:else}
+          <div class="relative">
+            <Image width="100%" ratio="2/3" class="shadow-sm group-hover:brightness-60 hover:shadow-lg {transClass}" />
+            <img
+              use:authenticatedImage={{
+                key: item.id,
+                load: (signal) => api.get(`media/cover/${item.id}`, { signal, cache: 'no-store' }).blob()
+              }}
+              alt=""
+              class="absolute inset-0 size-full rounded-sm object-cover shadow-sm group-hover:brightness-60 hover:shadow-lg {transClass}"
+              loading="lazy"
+            />
+          </div>
+        {/if}
+        {#if coverMeta}
+          <span
+            class="absolute bottom-1 left-1 z-1 rounded-sm bg-black/70 px-1.5 py-0.5 text-xs text-white tabular-nums"
+            >{coverMeta}</span
+          >
+        {/if}
       </div>
       <div class="@container flex-col-center gap-1 p-1">
         <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -209,6 +240,13 @@
           {item.title ?? item.name}
         </div>
         <div class="text-sm opacity-50">{item.year}</div>
+        {#if item.tags?.length}
+          <div class="flex max-w-full flex-wrap justify-center gap-1">
+            {#each item.tags as tag (tag)}
+              <span class="badge badge-soft badge-xs badge-primary">#{tag}</span>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/snippet}
 

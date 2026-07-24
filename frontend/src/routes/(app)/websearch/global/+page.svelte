@@ -1,7 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { api } from '$lib/api';
-  import { Container, DataView, HCell, Paginator, Search, SearchHit, markFavorites } from '$lib/components';
+  import {
+    Container,
+    DataView,
+    HCell,
+    Paginator,
+    Search,
+    SearchHistoryChips,
+    SearchHit,
+    markFavorites
+  } from '$lib/components';
   import { _ } from '$lib/i18n';
   import { restorePosition } from '$lib/stores';
   import type { IndexerAuth, IndexerConfig, Page, Resource, Resp } from '$lib/types';
@@ -42,6 +51,8 @@
   let isEmpty: boolean = $derived(!query.keyword && Object.keys(tabs).length === 0);
   let activeId: string | null = $state(null);
   let transition: boolean = $state(false);
+  let searchValue = $state('');
+  let history: SearchHistoryChips | null = $state(null);
 
   /**
    * Search for resources.
@@ -61,9 +72,23 @@
       load(id, route.title);
     }
     // record search history
-    api.post('user/history/record', {
-      json: { rel_type: 'search', rel_id: 0, keyword: query.keyword }
-    });
+    api
+      .post('user/history/record', {
+        json: { rel_type: 'search', rel_id: 0, keyword: query.keyword }
+      })
+      .then(() => history?.refresh());
+  }
+
+  function submitSearch(value: string) {
+    const keyword = value.trim();
+    query.keyword = keyword;
+    searchValue = keyword;
+    if (Object.keys(tabs).length === 0) {
+      transition = !!query.keyword;
+    } else {
+      transition = !query.keyword;
+    }
+    search();
   }
 
   /**
@@ -177,7 +202,8 @@
 
   onMount(() => {
     const params = page.url.searchParams;
-    query.keyword = params.get('keyword') || '';
+    const restore = params.get('restore') === 'false';
+    query.keyword = restore ? params.get('keyword') || '' : '';
     query.tab_id = params.get('tab_id');
     query.page_num = Number(params.get('page_num')) || null;
     query.page_size = Number(params.get('page_size')) || null;
@@ -193,21 +219,24 @@
       </span>
     {/if}
   </div>
-  <div class="flex-center px-2">
-    <Search
-      manual
-      label={$_('field.keyword')}
-      bind:value={query.keyword}
-      onsearch={() => {
-        if (Object.keys(tabs).length === 0) {
-          transition = !!query.keyword;
-        } else {
-          transition = !query.keyword;
-        }
-        search();
+  <div class="flex w-full flex-col items-center gap-3 px-2">
+    <div class="w-full max-w-2xl">
+      <Search
+        manual
+        label={$_('field.keyword')}
+        bind:value={searchValue}
+        onsearch={submitSearch}
+        maxWidth="100%"
+        class="w-full"
+        small={false}
+      />
+    </div>
+    <SearchHistoryChips
+      bind:this={history}
+      relId={0}
+      onselect={(value) => {
+        submitSearch(value);
       }}
-      maxWidth="42rem"
-      small={false}
     />
   </div>
   {#if !isEmpty}

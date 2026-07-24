@@ -9,6 +9,11 @@ export const load: LayoutLoad = async () => {
       title: 'nav.websearch.global.title',
       routes: [
         {
+          title: 'nav.local_search.title',
+          path: '/websearch/local',
+          icon: icons.boxMultipleSearch
+        },
+        {
           title: 'nav.websearch.global.search',
           path: '/websearch/global',
           icon: icons.search

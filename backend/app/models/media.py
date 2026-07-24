@@ -1,7 +1,8 @@
 from enum import StrEnum, auto
-from typing import Any, Self
+from typing import Annotated, Any, Self
 
 from pydantic import BaseModel, Field, PositiveInt, model_validator
+from sanic.request.form import File
 from tortoise.fields import (
     BigIntField,
     BooleanField,
@@ -9,6 +10,7 @@ from tortoise.fields import (
     CharField,
     DatetimeField,
     DecimalField,
+    FloatField,
     ForeignKeyField,
     ForeignKeyNullableRelation,
     ForeignKeyRelation,
@@ -23,7 +25,7 @@ from app.core.transcode import (
     ResolutionLimit,
     TranscodeOptions,
 )
-from app.models.base import IDs, Pageable, TortoiseModel
+from app.models.base import IDs, Pageable, RequestFilesMixin, TortoiseModel
 from app.models.flow import GraphRef
 from app.models.general import GlobalConfig
 from app.utils.disk import is_directory
@@ -90,6 +92,10 @@ class MediaItem(TortoiseModel):
     name = CharField(max_length=255)
     hash = CharField(max_length=32, null=True)
     size = BigIntField(null=True)
+    duration = FloatField(null=True)
+    width = IntField(null=True)
+    height = IntField(null=True)
+    bitrate = BigIntField(null=True)
     visible = BooleanField(default=True)
     nfo_path = CharField(max_length=4096, null=True)
     nfo_mtime = DatetimeField(null=True)
@@ -103,6 +109,7 @@ class MediaItem(TortoiseModel):
     season = IntField(null=True)
     episode = IntField(null=True)
     poster = CharField(max_length=255, null=True)
+    poster_source = CharField(max_length=16, null=True)
     backdrop = CharField(max_length=255, null=True)
     rating = DecimalField(max_digits=4, decimal_places=2, null=True)
     # relational fields
@@ -153,9 +160,42 @@ class MediaQuery(Pageable):
     path: str | None = None
 
 
+class MediaFeedQuery(BaseModel):
+    exclude: str | None = Field(max_length=4096, default=None)
+
+
+def feed_excluded_ids(value: str | None) -> list[int]:
+    if not value:
+        return []
+    ids = []
+    for part in value.split(","):
+        try:
+            id = int(part)
+        except ValueError:
+            continue
+        if id > 0 and id not in ids:
+            ids.append(id)
+        if len(ids) == 100:
+            break
+    return ids
+
+
 class MediaMetadata(BaseModel):
     graph_id: PositiveInt
     metadata: dict
+
+
+class MediaMetadataEdit(BaseModel, RequestFilesMixin):
+    plot: str = Field(max_length=50000, default="")
+    poster: str = Field(max_length=4096, default="")
+    frame: float | None = Field(ge=0, le=604800, default=None)
+    thumbnail: File | None = None
+
+
+class MediaTags(BaseModel):
+    tags: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(
+        max_length=32
+    )
 
 
 class MediaDel(IDs):
@@ -164,6 +204,14 @@ class MediaDel(IDs):
 
 class MediaResource(BaseModel):
     path: str
+
+
+class MediaFrameQuery(BaseModel):
+    position: float = Field(ge=0, le=604800)
+
+
+class MediaFramesQuery(BaseModel):
+    count: int = Field(ge=1, le=24, default=6)
 
 
 class TranscodeQuery(MediaResource):

@@ -86,6 +86,96 @@
   }
 
   /**
+   * Publish the saved draft of a flow graph by ID.
+   *
+   * @param id - The flow graph ID.
+   */
+  function publish(id: number) {
+    loading.start();
+    api
+      .get(`flow/graph/${id}`)
+      .json<Resp<FlowGraph>>()
+      .then(({ data }) => {
+        if (!data.draft?.nodes.length) {
+          alert({ level: 'error', message: 'invalid_flow_graph' });
+          loading.end();
+          return;
+        }
+        return api
+          .post(`flow/graph/${id}/publish`, { json: data.draft })
+          .then(() => search(pagination.current));
+      })
+      .catch(() => loading.end());
+  }
+
+  /** Publish the saved drafts of the supplied flow graphs. */
+  async function publishGraphs(selected: FlowGraph[]) {
+    loading.start();
+    try {
+      const details = await Promise.all(
+        selected.map((graph) => api.get(`flow/graph/${graph.id}`).json<Resp<FlowGraph>>())
+      );
+      const publishable = details
+        .map(({ data }) => data)
+        .filter((graph) => !!graph.draft?.nodes.length);
+      if (publishable.length === 0) {
+        alert({ level: 'error', message: 'invalid_flow_graph' });
+        loading.end();
+        return;
+      }
+
+      await Promise.all(
+        publishable.map((graph) =>
+          api.post(`flow/graph/${graph.id}/publish`, { json: graph.draft })
+        )
+      );
+      const skipped = selected.length - publishable.length;
+      alert({
+        level: 'success',
+        message: skipped
+          ? $_('alert.publish_items_partial', publishable.length, skipped)
+          : $_('alert.publish_items_success', publishable.length)
+      });
+      search(pagination.current);
+    } catch {
+      loading.end();
+    }
+  }
+
+  /** Publish the saved drafts of the selected flow graphs. */
+  function batchPublish() {
+    const selectedKeys = new Set(headerCheckbox.getSelectedKeys());
+    const selected = graphs.filter(
+      (graph) => selectedKeys.has(String(graph.id)) && graph.state !== 'published'
+    );
+    if (selected.length === 0) {
+      alert({ message: 'select_publish_items' });
+      return;
+    }
+    void publishGraphs(selected);
+  }
+
+  /** Republish every workflow whose saved draft has updates. */
+  async function publishUpdates() {
+    loading.start();
+    try {
+      const { data } = await api
+        .get('flow/graph/list', {
+          searchParams: { state: 'modified', page_num: 1, page_size: 999 }
+        })
+        .json<Resp<Page<FlowGraph>>>();
+      if (data.items.length === 0) {
+        alert({ message: 'no_flow_updates' });
+        loading.end();
+        return;
+      }
+      await publishGraphs(data.items);
+    } catch {
+      loading.end();
+    }
+  }
+
+  /**
    * Delete a flow graph by ID.
    *
    * @param id - The flow graph ID.
@@ -119,7 +209,10 @@
    * Export the flow graphs as a zip file.
    */
   function exportGraphs() {
-    const selectedKeys = headerCheckbox.getSelectedKeys();
+    const exportableKeys = new Set(
+      graphs.filter((graph) => graph.state !== 'draft').map((graph) => String(graph.id))
+    );
+    const selectedKeys = headerCheckbox.getSelectedKeys().filter((key) => exportableKeys.has(key));
     if (selectedKeys.length === 0) {
       alert({ message: 'select_export_items' });
       return;
@@ -204,6 +297,30 @@
   {#snippet actions()}
     <Button
       size="md"
+      icon={icons.arrowRotateClockwise}
+      text={$_('action.publish_updates')}
+      onclick={() => {
+        confirm({
+          icon: icons.arrowRotateClockwise,
+          title: $_('action.publish_updates'),
+          onconfirm: publishUpdates
+        });
+      }}
+    />
+    <Button
+      size="md"
+      icon={icons.directionUpRight}
+      text={$_('action.publish', $_('entity.graphs'))}
+      onclick={() => {
+        confirm({
+          icon: icons.directionUpRight,
+          title: $_('action.publish', $_('entity.graphs')),
+          onconfirm: batchPublish
+        });
+      }}
+    />
+    <Button
+      size="md"
       icon={icons.boxArrowUp}
       text={$_('action.export', $_('entity.graphs'))}
       onclick={() => exportGraphs()}
@@ -224,7 +341,7 @@
   {/snippet}
   {#snippet header()}
     <HCell width="2rem">
-      <Checkbox batch={graphs.filter((g) => g.state !== 'draft').length} bind:this={headerCheckbox} />
+      <Checkbox batch={graphs.length} bind:this={headerCheckbox} />
     </HCell>
     <HCell width={['30%', '55%']} text={$_('field.name')} sort={ordering.bind('name')} />
     <HCell width={['15%', '45%']} text={$_('field.category')} sort={ordering.bind('category')} />
@@ -236,7 +353,7 @@
   {#snippet row(graph)}
     {@const draft = graph.state === 'draft'}
     <Cell>
-      <Checkbox key={String(graph.id)} disabled={draft} />
+      <Checkbox key={String(graph.id)} />
     </Cell>
     <Cell>
       {@const nameClass = 'mb-2 flex max-w-fit items-center gap-1 **:-mb-1'}
@@ -298,6 +415,18 @@
           icon: icons.documentEdit,
           text: $_('action.edit', $_('entity.graph')),
           onclick: () => goto(`/settings/workflows/graphs/${graph.editable ? '' : 'r/'}${graph.id}`)
+        },
+        {
+          condition: graph.state !== 'published',
+          icon: icons.directionUpRight,
+          text: $_('action.publish', $_('entity.graph')),
+          onclick: () => {
+            confirm({
+              icon: icons.directionUpRight,
+              title: `${$_('action.publish', $_('entity.graph'))} [${graph.name}]`,
+              onconfirm: () => publish(graph.id)
+            });
+          }
         },
         {
           condition: !draft,

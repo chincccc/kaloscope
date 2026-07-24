@@ -1,13 +1,22 @@
 <script lang="ts" module>
   import { persisted } from '$lib/stores';
-  import type { Chapter, ChapterGroup, Resource, Resp } from '$lib/types';
+  import type { Chapter, ChapterGroup } from '$lib/types';
+
+  export type ImageViewerProps = {
+    onback?: () => void;
+  };
+
+  export type ImageViewerBatch = {
+    images?: string[] | null;
+    image_count?: number | null;
+  };
 
   /** Delay in ms before auto-hiding the overlay controls. */
   const CONTROLS_HIDE_DELAY = 3000;
   /** Click-zone threshold ratio in paged mode. The complementary zone is `1 - threshold`. */
   const CLICK_ZONE_THRESHOLD = 0.3;
-  /** Distance from the bottom of the scroll container (px) to trigger loading more images. */
-  const SCROLL_LOAD_THRESHOLD = 400;
+  /** Number of loaded images to keep ahead of the current position in scroll mode. */
+  const SCROLL_PREFETCH_AHEAD = 3;
   /** Maximum retries for a failed image request. */
   const MAX_IMAGE_RETRY = 3;
 
@@ -18,7 +27,9 @@
     title?: string | null;
     chapters?: Chapter[];
     chapterId?: string | null;
+    initialIndex?: number;
     chapterChange?: (chapter: Chapter) => void;
+    loadMore?: (offset: number) => Promise<ImageViewerBatch | null>;
   };
 
   /** Reading mode. */
@@ -85,13 +96,13 @@
 </script>
 
 <script lang="ts">
-  import { page as route } from '$app/state';
-  import { api, proxyImage } from '$lib/api';
+  import { proxyImage } from '$lib/api';
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
   import { freeze, historyBack } from '$lib/stores';
   import { onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
+  let { onback }: ImageViewerProps = $props();
 
   // resource title
   let title = $state('');
@@ -113,6 +124,8 @@
   );
   // callback to notify parent of chapter change
   let chapterChange = $state<((c: Chapter) => void) | undefined>(undefined);
+  // source-specific callback for loading additional image pages
+  let loadMoreImages = $state<ImageViewerOptions['loadMore']>(undefined);
   // display title, resource title or current chapter title
   let currentTitle = $derived(title || (chapterIndex >= 0 ? chapters[chapterIndex] : null)?.title);
   // whether the chapter list is displayed in descending order
@@ -171,7 +184,9 @@
     chapters = options.chapters ?? [];
     chapterId = options.chapterId ?? null;
     chapterChange = options.chapterChange;
-    imageIndex = 0;
+    loadMoreImages = options.loadMore;
+    const initialIndex = options.initialIndex ?? 0;
+    imageIndex = Math.max(0, Math.min(initialIndex, images.length - 1));
     imageLoading = true;
     exhausted = images.length >= imageCount;
     showControls();
@@ -245,28 +260,32 @@
   /**
    * Load the next batch of images from the details API.
    */
+  function shouldPrefetch() {
+    return $settings?.readMode === 'scroll' && hasMore && imageIndex + SCROLL_PREFETCH_AHEAD >= images.length;
+  }
+
+  /**
+   * Load the next batch of images from the details API.
+   */
   async function loadMore() {
     if (loading || !hasMore) {
       return;
     }
     loading = true;
     try {
-      const resp = await api
-        .post(`flow/graph/${route.params.indexer_id}/execute`, {
-          json: {
-            $start: 'details_start',
-            id: route.params.rsrc_id,
-            chapter_id: route.url.searchParams.get('chapter_id') ?? chapterId,
-            page: images.length + 1
-          }
-        })
-        .json<Resp<Resource | null>>();
-      const data = resp.data;
+      if (!loadMoreImages) {
+        exhausted = true;
+        return;
+      }
+      const data = await loadMoreImages(images.length + 1);
       const nextCount = data?.image_count;
       imageCount = nextCount && nextCount > 0 ? nextCount : imageCount;
       exhausted = appendImages(data?.images) === 0;
     } finally {
       loading = false;
+      if (shouldPrefetch()) {
+        void loadMore();
+      }
     }
   }
 
@@ -318,16 +337,12 @@
   }
 
   /**
-   * Track scroll position and request more images near the end.
+   * Track scroll position and keep a small image window prefetched.
    */
   function handleImageScroll() {
     updateImageIndex();
-    const el = scrollEl;
-    if ($settings?.readMode !== 'scroll' || !el || !hasMore || loading) {
-      return;
-    }
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - SCROLL_LOAD_THRESHOLD) {
-      loadMore();
+    if (!loading && shouldPrefetch()) {
+      void loadMore();
     }
   }
 
@@ -422,7 +437,11 @@
       transition:fade={{ duration: 200 }}
     >
       <div class="flex items-center gap-1">
-        <button class="btn border-0 btn-ghost shadow-none btn-xs" onclick={() => historyBack()} aria-label="Back">
+        <button
+          class="btn border-0 btn-ghost shadow-none btn-xs"
+          onclick={() => (onback ? onback() : historyBack())}
+          aria-label="Back"
+        >
           <iconify-icon icon={icons.backSolid} width="1.25rem"></iconify-icon>
         </button>
         {#if chapters.length > 1}

@@ -13,6 +13,14 @@ export const load: LayoutLoad = async () => {
       mobile: true
     },
     {
+      title: 'nav.feed.title',
+      path: '/feed',
+      icon: icons.playCircle,
+      iconFilled: icons.playFilled,
+      mobile: true,
+      drawerStyle: 'menu'
+    },
+    {
       title: 'nav.websearch.title',
       path: '/websearch',
       icon: icons.globeSearch,
@@ -29,6 +37,14 @@ export const load: LayoutLoad = async () => {
       drawerStyle: 'menu'
     },
     {
+      title: 'nav.galleries.title',
+      path: '/galleries',
+      icon: icons.imageMultiple,
+      iconFilled: icons.imageMultipleFilled,
+      mobile: true,
+      drawerStyle: 'menu'
+    },
+    {
       title: 'nav.settings.title',
       path: '/settings',
       icon: icons.settings,
@@ -39,7 +55,7 @@ export const load: LayoutLoad = async () => {
   ];
 
   if ((await getCurrentRole()) === 'admin') {
-    navs.splice(3, 0, {
+    navs.splice(navs.length - 1, 0, {
       title: 'nav.downloads.title',
       path: '/downloads',
       icon: icons.box3dDownload,

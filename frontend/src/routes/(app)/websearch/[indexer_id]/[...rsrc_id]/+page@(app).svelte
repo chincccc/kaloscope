@@ -1,8 +1,18 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { api } from '$lib/api';
-  import { ImageViewer, Overlay, TextViewer, VideoPlayer } from '$lib/components';
+  import {
+    ImageViewer,
+    Overlay,
+    TextViewer,
+    VideoPlayer,
+    comicDownloadPrompt,
+    hasComicDownload
+  } from '$lib/components';
   import { createLoading } from '$lib/helpers';
+  import { _ } from '$lib/i18n';
+  import { icons } from '$lib/icons';
+  import { user } from '$lib/stores';
   import type { Chapter, Resource, Resp } from '$lib/types';
   import { isDashSupported } from '$lib/utils';
   import { onMount, tick } from 'svelte';
@@ -13,6 +23,7 @@
   const query = queryParameters(
     {
       chapter_id: ssp.string(),
+      resource_id: ssp.string(),
       media_type: ssp.string(),
       video_type: ssp.string()
     },
@@ -33,6 +44,7 @@
   let imageViewer: ImageViewer | null = $state(null);
   // the video player instance
   let videoPlayer: VideoPlayer | null = $state(null);
+  let sourcePage: string = $derived(query.resource_id ?? page.params.rsrc_id);
 
   // the loading state
   const loading = createLoading();
@@ -60,7 +72,7 @@
       .post(`flow/graph/${page.params.indexer_id}/execute`, {
         json: {
           $start: 'details_start',
-          id: page.params.rsrc_id,
+          id: query.resource_id ?? page.params.rsrc_id,
           chapter_id: activeChapterId,
           dash_supported: isDashSupported(),
           ua: {
@@ -82,6 +94,26 @@
       .finally(() => {
         loading.end();
       });
+  }
+
+  async function loadMoreImages(pageNumber: number) {
+    const resp = await api
+      .post(`flow/graph/${page.params.indexer_id}/execute`, {
+        json: {
+          $start: 'details_start',
+          id: query.resource_id ?? page.params.rsrc_id,
+          chapter_id: query.chapter_id ?? activeChapterId,
+          page: pageNumber
+        }
+      })
+      .json<Resp<Resource | null>>();
+    const data = resp.data;
+    return data
+      ? {
+          images: data.images,
+          image_count: data.image_count
+        }
+      : null;
   }
 
   /**
@@ -119,7 +151,8 @@
           title: rsrc.title,
           chapters: chapters,
           chapterId: activeChapterId,
-          chapterChange: onchange
+          chapterChange: onchange,
+          loadMore: loadMoreImages
         });
       }
     } else if (mediaType === 'video' && videoPlayer) {
@@ -131,6 +164,8 @@
           title: rsrc.title,
           danmakus: rsrc.danmakus,
           videoType: videoType,
+          proxy: true,
+          referer: sourcePage,
           chapters: chapters,
           chapterId: activeChapterId,
           chapterChange: onchange,
@@ -163,7 +198,14 @@
     const { id, url, title } = chapter;
     // change the video chapter directly if the URL is available
     if (mediaType === 'video' && videoPlayer && url) {
-      videoPlayer.mount({ next: true, url, title });
+      videoPlayer.mount({
+        next: true,
+        url,
+        title,
+        videoType: videoType ?? undefined,
+        proxy: true,
+        referer: sourcePage
+      });
       return;
     }
     // update the query parameter and request the new chapter
@@ -189,4 +231,14 @@
       <VideoPlayer bind:this={videoPlayer} />
     {/if}
   {/key}
+  {#if resource && hasComicDownload(resource) && $user?.role === 'admin'}
+    <button
+      class="btn fixed top-1.5 right-12 z-4 border-0 bg-black/50 btn-ghost text-white/80 shadow-none btn-xs"
+      aria-label={$_('download.comic.title')}
+      title={$_('download.comic.title')}
+      onclick={() => resource && comicDownloadPrompt(resource)}
+    >
+      <iconify-icon icon={icons.download} width="1.25rem"></iconify-icon>
+    </button>
+  {/if}
 </div>

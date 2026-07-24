@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum, auto
 from typing import Any, Self
+from urllib.parse import urlsplit
 
 from pydantic import (
     BaseModel,
@@ -210,6 +211,59 @@ class DownloadTask(TortoiseModel):
         computed = ("ratio", "estimate")
 
 
+class ComicDownloadTask(TortoiseModel):
+    gallery_id: int | None
+    gallery = ForeignKeyField(
+        "models.Gallery",
+        related_name="download_tasks",
+        db_index=True,
+        null=True,
+        on_delete=SET_NULL,
+    )
+    url = TextField()
+    request_headers = JSONField[dict[str, str] | None](null=True)
+    dir = CharField(max_length=4096)
+    name = CharField(max_length=255)
+    temp_path = CharField(max_length=4096)
+    final_path = CharField(max_length=4096)
+    state = CharEnumField(max_length=16, enum_type=DownloadState)
+    error_msg = TextField(null=True)
+    dl_speed = BigIntField(null=True)
+    percentage = FloatField(null=True)
+    total_size = BigIntField(null=True)
+    completed_size = BigIntField(null=True)
+    completed_at = DatetimeField(null=True)
+
+    def ratio(self) -> str:
+        size = ""
+        if self.completed_size is None or self.total_size is None:
+            return size
+        size = f"{format_bytes(self.completed_size)} / {format_bytes(self.total_size)}"
+        if self.percentage is None:
+            return size
+        return f"{size} ({round(self.percentage)}%)"
+
+    def estimate(self) -> str:
+        if self.dl_speed is None:
+            return ""
+        speed = format_bytes(self.dl_speed) + "/s"
+        if not self.dl_speed or not self.completed_size or not self.total_size:
+            return speed
+        eta = duration(
+            (self.total_size - self.completed_size) / self.dl_speed,
+            unit="seconds",
+        )
+        return f"{speed} ({eta})"
+
+    class Meta:
+        table = "comic_download_task"
+        ordering = ["-created_at"]
+
+    class PydanticMeta:
+        exclude = ("gallery", "url", "request_headers", "temp_path")
+        computed = ("ratio", "estimate")
+
+
 # -------------------- Pydantic Models --------------------
 class DownloaderUpsert(BaseModel):
     id: PositiveInt | None = None
@@ -249,6 +303,42 @@ class DownloadAdd(BaseModel, RequestFilesMixin):
             # https://www.python-httpx.org/advanced/clients/#multipart-file-encoding
             return (torrent.name, torrent.body, torrent.type)
         return None
+
+
+class ComicDownloadAdd(BaseModel):
+    url: str = Field(min_length=1, max_length=8192)
+    title: str = Field(min_length=1, max_length=255)
+    filename: str | None = Field(min_length=1, max_length=255, default=None)
+    headers: dict[str, str] = Field(default_factory=dict)
+    gallery_id: PositiveInt
+
+    @model_validator(mode="after")
+    def validate_request(self) -> Self:
+        url = self.url.strip()
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("url must use http or https")
+        if any(
+            not key.strip()
+            or "\n" in key
+            or "\r" in key
+            or "\n" in value
+            or "\r" in value
+            for key, value in self.headers.items()
+        ):
+            raise ValueError("invalid request header")
+        self.url = url
+        return self
+
+
+class ComicDownloadQuery(Pageable):
+    name: str | None = None
+    state: DownloadState | None = None
+    states: list[DownloadState] | None = None
+
+
+class ComicDownloadDel(IDs):
+    local: bool = False
 
 
 class DownloadDel(IDs):

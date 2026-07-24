@@ -22,6 +22,11 @@ export const load: LayoutLoad = async () => {
           title: 'nav.settings.personal.preferences',
           path: '/settings/personal/preferences',
           icon: icons.textGrammarSettings
+        },
+        {
+          title: 'nav.settings.personal.feed',
+          path: '/settings/personal/feed',
+          icon: icons.playCircle
         }
       ]
     },
@@ -93,6 +98,11 @@ export const load: LayoutLoad = async () => {
             title: 'nav.settings.system.medialibs',
             path: '/settings/system/medialibs',
             icon: icons.videoClipMultiple
+          },
+          {
+            title: 'nav.settings.system.galleries',
+            path: '/settings/system/galleries',
+            icon: icons.imageMultiple
           },
           {
             title: 'nav.settings.system.downloaders',

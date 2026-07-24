@@ -22,6 +22,12 @@
     { value: 'high', label: 'transcode.quality.high' }
   ];
 
+  const thumbnailSourceOptions = [
+    { value: 'first', label: 'media.thumbnail_source_options.first' },
+    { value: 'middle', label: 'media.thumbnail_source_options.middle' },
+    { value: 'random', label: 'media.thumbnail_source_options.random' }
+  ];
+
   // the loading state
   const loading = createLoading();
 
@@ -32,7 +38,9 @@
     'vaapi.device': '',
     'transcode.enabled': false,
     'transcode.hwaccel': null,
-    'transcode.quality': 'medium'
+    'transcode.quality': 'medium',
+    'media.thumbnail_source': 'first',
+    'media.screenshot_count': 6
   });
 
   /**
@@ -44,6 +52,13 @@
     api.post('config/upsert', {
       json: { key: key, value: configs[key] }
     });
+  }
+  function setScreenshotCount() {
+    configs['media.screenshot_count'] = Math.max(
+      0,
+      Math.min(24, Math.round(Number(configs['media.screenshot_count']) || 0))
+    );
+    setValue('media.screenshot_count');
   }
 
   /**
@@ -68,6 +83,45 @@
 </script>
 
 <Container type="settings" loading={$loading}>
+  <Setting title={$_('media.thumbnails')}>
+    <fieldset class="fieldset">
+      <Label tip={$_('media.thumbnail_source_tip')}>{$_('media.thumbnail_source')}</Label>
+      <Select
+        translate
+        options={thumbnailSourceOptions}
+        bind:value={configs['media.thumbnail_source']}
+        onchange={() => setValue('media.thumbnail_source')}
+        class="w-full"
+      />
+    </fieldset>
+  </Setting>
+
+  <Setting title={$_('media.screenshots')}>
+    <fieldset class="fieldset">
+      <Label tip={$_('media.screenshot_count_tip')}>{$_('media.screenshot_count')}</Label>
+      <div class="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-3">
+        <input
+          type="range"
+          class="range w-full range-primary range-sm"
+          min="0"
+          max="24"
+          step="1"
+          bind:value={configs['media.screenshot_count']}
+          onchange={setScreenshotCount}
+        />
+        <input
+          type="number"
+          class="input w-full input-sm"
+          min="0"
+          max="24"
+          step="1"
+          bind:value={configs['media.screenshot_count']}
+          onchange={setScreenshotCount}
+        />
+      </div>
+    </fieldset>
+  </Setting>
+
   <Setting title={$_('ffmpeg.title')}>
     <fieldset class="fieldset">
       <Label tip={$_('ffmpeg.path.tip')}>

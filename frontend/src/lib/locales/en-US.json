@@ -20,11 +20,17 @@
     "dashboard": {
       "title": "Dashboard"
     },
+    "local_search": {
+      "title": "Local Search"
+    },
+    "feed": {
+      "title": "Shuffle Feed"
+    },
     "websearch": {
       "title": "Search",
       "global": {
         "title": "Global",
-        "search": "Global Search",
+        "search": "Global Network Search",
         "favorites": "My Favorites"
       },
       "indexers": "Indexers"
@@ -32,9 +38,13 @@
     "medialibs": {
       "title": "Libraries"
     },
+    "galleries": {
+      "title": "Gallery"
+    },
     "downloads": {
       "title": "Downloads",
       "downloading": "Downloading{0}",
+      "comics": "Comic Downloads",
       "completed": "Completed{0}",
       "plans": "Download Plans",
       "speed": {
@@ -49,7 +59,8 @@
         "title": "Personal",
         "account": "Account",
         "sessions": "Sessions",
-        "preferences": "Preferences"
+        "preferences": "Preferences",
+        "feed": "Shuffle Feed Settings"
       },
       "system": {
         "title": "System",
@@ -57,6 +68,7 @@
         "network": "Network",
         "general": "General",
         "medialibs": "Libraries",
+        "galleries": "Galleries",
         "downloaders": "Downloaders"
       },
       "monitor": {
@@ -163,6 +175,7 @@
     "username": "Username",
     "password": "Password",
     "description": "Description",
+    "thumbnail": "Thumbnail",
     "average_time": "Average Time",
     "graph": "Graph",
     "year": "Year",
@@ -226,6 +239,8 @@
     "metadata": "Metadata",
     "media_lib": "Media Library",
     "media_libs": "Media Libraries",
+    "gallery": "Gallery",
+    "galleries": "Galleries",
     "dns_resolver": "DNS Resolver",
     "dns_resolvers": "DNS Resolvers",
     "proxy_server": "Proxy Server",
@@ -234,6 +249,7 @@
   "action": {
     "add": "New {0}",
     "edit": "Edit {0}",
+    "rename": "Rename {0}",
     "view": "View {0}",
     "enter": "Enter {0}",
     "stop": "Stop {0}",
@@ -263,6 +279,7 @@
     "clear": "Clear {0}",
     "reload": "Reload {0}",
     "publish": "Publish {0}",
+    "publish_updates": "Publish updates",
     "move_up": "Move Up {0}",
     "move_down": "Move Down {0}",
     "toggle_on": "On",
@@ -315,6 +332,21 @@
         "tip": "Only works on devices that support the Vibration API."
       }
     },
+    "feed": {
+      "title": "Shuffle Feed",
+      "random_start": {
+        "title": "Start at a random position",
+        "tip": "Only applies the first time a video appears in the current feed session."
+      }
+    },
+    "rating": {
+      "title": "Rating dimensions",
+      "tip": "The built-in Rating is shared and managed by administrators. Your custom dimensions and scores are private.",
+      "placeholder": "For example: Humor",
+      "add": "Add rating dimension",
+      "remove": "Delete rating dimension {name}",
+      "admin_only": "Administrator rating"
+    },
     "dashboard": {
       "title": "Dashboard",
       "tip": "Set the modules displayed on the dashboard.",
@@ -329,6 +361,11 @@
       "untrack": "Not Saving"
     }
   },
+  "rating": {
+    "title": "Ratings",
+    "clear": "Clear rating",
+    "unrated": "Not rated"
+  },
   "filesystem": {
     "new_folder": "New Folder",
     "new_folder_message": "Enter a name for the new folder under the selected directory:",
@@ -338,6 +375,11 @@
     "show_hidden": "Show Hidden Files"
   },
   "download": {
+    "builtin": "Built-in Downloader",
+    "waiting_response": "Waiting for server response",
+    "comic": {
+      "title": "Download Comic to Gallery"
+    },
     "downloader": {
       "title": "Downloader",
       "preset": "Preset",
@@ -358,16 +400,80 @@
       "sub_repl": "Replacement string"
     }
   },
+  "gallery": {
+    "image_count": "Images",
+    "uncategorized": "Uncategorized images",
+    "unfiled_chapter": "Unfiled chapter"
+  },
   "media": {
     "director": "Director",
     "writer": "Writer",
     "cast": "Cast",
     "studio": "Studio",
     "episodes": "Episodes",
+    "duration": "Duration",
+    "resolution": "Resolution",
+    "file_size": "File size",
+    "bitrate": "Bitrate",
+    "episode_count": "{0} episodes",
+    "total_duration": "Total duration",
+    "episode_covers": "Choose from episode covers",
+    "thumbnails": "Video Thumbnails",
+    "thumbnail_source": "Thumbnail source",
+    "thumbnail_source_tip": "Only affects automatically generated covers. Changing this clears the automatic cache and rebuilds it using the new rule; custom covers are preserved.",
+    "thumbnail_source_options": {
+      "first": "First frame",
+      "middle": "Middle frame",
+      "random": "Random frame"
+    },
+    "screenshots": "Video Screenshots",
+    "screenshot": "Screenshot",
+    "screenshot_count": "Screenshot count",
+    "screenshot_count_tip": "Applies to every user. Set to 0 to disable cached screenshots.",
+    "video_frames": "Video frames",
+    "extract_frames": "Extract frames",
+    "playback_links": "Playback links",
+    "primary_stream": "Primary stream",
     "parts": "Parts",
     "tags": "Tags",
+    "edit_tags": "Edit tags",
+    "add_tag": "Add tag",
+    "remove_tag": "Remove tag {0}",
+    "tag_placeholder": "Enter a tag",
+    "tag_tip": "Tags are written to the real filename with a # prefix and spaces between them.",
     "delete_local": "Also delete the local files",
     "delete_local_confirm": "Are you sure you want to delete the local files?",
+    "local_search": {
+      "title": "Local Search",
+      "placeholder": "Search movies, TV episodes, comics, and images",
+      "filter_types": "Filter by type",
+      "types": {
+        "movie": "Movie",
+        "tv_show": "TV show",
+        "gallery_book": "Gallery book",
+        "episode": "TV episode",
+        "image": "Single image"
+      },
+      "filter_rating": "Filter by rating",
+      "rating_dimension": "Rating dimension",
+      "minimum_rating": "Minimum rating",
+      "at_least_score": "At least {score}",
+      "add_rating_filter": "Add rating filter",
+      "remove_rating_filter": "Remove rating filter",
+      "movies": "Movies",
+      "tv_shows": "TV Shows",
+      "episodes": "Episodes",
+      "books": "Comics",
+      "images": "Images",
+      "empty": "No local results",
+      "uncategorized": "Uncategorized"
+    },
+    "feed": {
+      "empty": "No playable videos are available",
+      "previous": "Previous video",
+      "next": "Next video",
+      "episode_details": "Episode details"
+    },
     "text": {
       "chapters": "Chapters",
       "settings": "Settings",
@@ -774,6 +880,7 @@
     "flow_not_found": "Workflow definition not found!",
     "flow_not_published": "Workflow is not published!",
     "flow_already_running": "Workflow task is already running!",
+    "no_flow_updates": "There are no workflow updates to publish.",
     "name_already_exists": "Name already exists!",
     "username_already_exists": "Username already exists!",
     "pattern_already_exists": "Pattern already exists!",
@@ -792,10 +899,13 @@
     "get_info_hash_failed": "Failed to get info-hash!",
     "http_request_failed": "HTTP request failed!",
     "select_export_items": "Please select at least one item to export.",
+    "select_publish_items": "Please select at least one draft or modified workflow to publish.",
     "select_delete_items": "Please select at least one item to delete.",
     "export_items_failed": "Failed to export the items!",
     "import_items_failed": "Failed to import the items!",
     "import_items_success": "Successfully imported {0} items!",
+    "publish_items_success": "Successfully published {0} workflows!",
+    "publish_items_partial": "Published {0} workflows and skipped {1} empty workflows.",
     "upgrade_success": "Upgrade successful!",
     "file_not_exists": "File does not exist!"
   }

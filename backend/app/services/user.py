@@ -42,6 +42,8 @@ class UserService(BaseService[User], model=User):
         "recent_watches": True,
         "search_records": 3,
         "watch_records": 3,
+        "feed_random_start": False,
+        "rating_dimensions": [],
     }
 
     @classmethod
@@ -73,10 +75,11 @@ class UserService(BaseService[User], model=User):
         # set default preferences
         preferences = user.preferences
         if preferences is None:
-            preferences = cls.DEFAULT_PREFERENCES
+            preferences = cls.DEFAULT_PREFERENCES.copy()
         elif isinstance(preferences, dict):
             for key, value in cls.DEFAULT_PREFERENCES.items():
                 preferences.setdefault(key, value)
+            preferences.pop("media_screenshot_count", None)
         # construct the login user object
         request = Request.get_current()
         now = timezone.now()
@@ -164,6 +167,17 @@ class UserService(BaseService[User], model=User):
         preferences = cls.DEFAULT_PREFERENCES.copy()
         if isinstance(user.preferences, dict):
             preferences.update(user.preferences)
+        if pref.key == "media_screenshot_count":
+            if preferences.pop(pref.key, None) is not None:
+                await User.filter(id=id).update(preferences=preferences)
+                sessions = SessionHolder.get_sessions()
+                for token, login_user in entries(
+                    sessions, vfilter=lambda u: u.id == id
+                ):
+                    login_user.preferences = preferences
+                    sessions[token] = login_user
+            return
+
         if pref.key in preferences:
             preferences[pref.key] = pref.value
             await User.filter(id=id).update(preferences=preferences)
@@ -342,12 +356,19 @@ class UserPermissionService(BaseService[UserPermission], model=UserPermission):
             obj: The permissions update data.
         """
         await UserPermission.filter(user_id=user_id).delete()
-        perms = [
-            UserPermission(user_id=user_id, rel_type=PermType.INDEXER, rel_id=rid)
-            for rid in obj.indexer_ids
-        ] + [
-            UserPermission(user_id=user_id, rel_type=PermType.MEDIA_LIB, rel_id=rid)
-            for rid in obj.media_lib_ids
-        ]
+        perms = (
+            [
+                UserPermission(user_id=user_id, rel_type=PermType.INDEXER, rel_id=rid)
+                for rid in obj.indexer_ids
+            ]
+            + [
+                UserPermission(user_id=user_id, rel_type=PermType.MEDIA_LIB, rel_id=rid)
+                for rid in obj.media_lib_ids
+            ]
+            + [
+                UserPermission(user_id=user_id, rel_type=PermType.GALLERY, rel_id=rid)
+                for rid in obj.gallery_ids
+            ]
+        )
         if perms:
             await UserPermission.bulk_create(perms)

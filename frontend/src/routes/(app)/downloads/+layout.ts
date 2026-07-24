@@ -18,6 +18,11 @@ export const load: LayoutLoad = () => {
           icon: icons.download
         },
         {
+          title: 'nav.downloads.comics',
+          path: '/downloads/comics',
+          icon: icons.imageMultiple
+        },
+        {
           title: 'nav.downloads.completed',
           path: '/downloads/completed',
           icon: icons.fileCheck

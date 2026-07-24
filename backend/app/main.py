@@ -29,11 +29,13 @@ from app.core.logstream import (
     register_log_monitor,
     unregister_log_monitor,
 )
+from app.core.media.screenshots import shutdown_screenshot_tasks
 from app.core.media.watcher import LibWatcher
 from app.core.middleware import SessionHolder, on_request, on_response
 from app.core.monkeypatch import apply_monkey_patches
 from app.core.network import NetworkTransport
 from app.core.transcode.transcoder import shutdown_monitors
+from app.services.comic_download import ComicDownloadService
 from app.utils.importer import register_blueprints
 from app.utils.json import dumps, loads
 
@@ -76,6 +78,7 @@ async def before_server_start(app: Sanic):
     await attach_log_monitor(app)
     await start_orm(app)
     await start_http_client(app)
+    await ComicDownloadService.initialize()
     await start_flow_engine(app)
     await start_lib_watcher(app)
     await start_dl_syncer(app)
@@ -85,6 +88,8 @@ async def before_server_start(app: Sanic):
 @app.before_server_stop
 async def before_server_stop(app: Sanic):
     """Handle the worker process shutdown event."""
+    await ComicDownloadService.shutdown()
+    await shutdown_screenshot_tasks()
     await shutdown_monitors()
     await save_sessions(app)
     await close_dl_syncer(app)

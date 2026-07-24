@@ -29,12 +29,19 @@ def authorize(role: UserRole | None = None):
                 # attach permissions to the user info if no specific role is required
                 indexer_ids = []
                 lib_ids = []
+                gallery_ids = []
                 for perm in await UserPermission.filter(user_id=user.id):
                     if perm.rel_type == PermType.INDEXER:
                         indexer_ids.append(perm.rel_id)
                     elif perm.rel_type == PermType.MEDIA_LIB:
                         lib_ids.append(perm.rel_id)
-                user.perms = Permissions(indexer_ids=indexer_ids, media_lib_ids=lib_ids)
+                    elif perm.rel_type == PermType.GALLERY:
+                        gallery_ids.append(perm.rel_id)
+                user.perms = Permissions(
+                    indexer_ids=indexer_ids,
+                    media_lib_ids=lib_ids,
+                    gallery_ids=gallery_ids,
+                )
 
             # call the main method and await if it's a coroutine
             response = func(request, *args, **kwargs)

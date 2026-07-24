@@ -1,14 +1,38 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { api } from '$lib/api';
-  import { Backdrop, Container, Image, MediaActions, mediaTitle, Rating, VideoPlayer } from '$lib/components';
+  import {
+    Backdrop,
+    Container,
+    Image,
+    ImageViewer,
+    MediaActions,
+    mediaTitle,
+    Rating,
+    ResourceRatings,
+    VideoPlayer
+  } from '$lib/components';
   import { createLoading } from '$lib/helpers';
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
+  import { formatMediaBitrate, formatMediaDuration, formatMediaResolution, formatMediaSize } from '$lib/media-format';
   import { historyBack, user } from '$lib/stores';
   import type { MediaItem, MediaMeta, Resp } from '$lib/types';
   import { buildStreamUrl } from '$lib/utils';
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
+
+  type Screenshot = {
+    index: number;
+    position: number;
+    url: string;
+  };
+
+  type ScreenshotStatus = {
+    count: number;
+    items: Array<{ index: number; position: number; url: string }>;
+    pending: boolean;
+    error: boolean;
+  };
 
   // the loading state
   const loading = createLoading();
@@ -20,10 +44,31 @@
   // the selected child media item and its metadata
   let _media: MediaItem | null = $state(null);
   let _meta: MediaMeta | null = $state(null);
+  let technicalItems = $derived.by(() => {
+    if (!media) return [];
+    return [
+      {
+        label: media.episode_count ? $_('media.total_duration') : $_('media.duration'),
+        value: formatMediaDuration(media.duration)
+      },
+      { label: $_('media.resolution'), value: formatMediaResolution(media.width, media.height) },
+      { label: $_('media.file_size'), value: formatMediaSize(media.size) },
+      { label: $_('media.bitrate'), value: formatMediaBitrate(media.bitrate) }
+    ].filter((item) => item.value);
+  });
 
   // the player instance and playing state
   let player: VideoPlayer | null = $state(null);
   let playing = $state(false);
+  let screenshotViewer: ImageViewer | null = $state(null);
+  let screenshotViewerOpen = $state(false);
+  let screenshots = $state<Screenshot[]>([]);
+  let screenshotTitle = $state('');
+  let screenshotExpected = $state(0);
+  let screenshotLoading = $state(false);
+  let screenshotController: AbortController | null = null;
+  let technicalTimer: ReturnType<typeof setTimeout> | null = null;
+  let screenshotGeneration = 0;
 
   // the sorted child media items
   let parts: MediaItem[] = $derived.by(() => {
@@ -86,6 +131,102 @@
     return resp.data;
   }
 
+  function clearScreenshots() {
+    screenshotGeneration++;
+    screenshotController?.abort();
+    screenshotController = null;
+    for (const screenshot of screenshots) URL.revokeObjectURL(screenshot.url);
+    screenshots = [];
+    screenshotTitle = '';
+    screenshotExpected = 0;
+    screenshotLoading = false;
+    screenshotViewerOpen = false;
+  }
+
+  async function loadScreenshots(target: MediaItem) {
+    clearScreenshots();
+    const generation = screenshotGeneration;
+    const controller = new AbortController();
+    screenshotController = controller;
+    screenshotLoading = true;
+    const loaded = new Map<number, Screenshot>();
+
+    try {
+      while (!controller.signal.aborted) {
+        const response = await api
+          .get(`media/${target.id}/screenshots`, { signal: controller.signal })
+          .json<Resp<ScreenshotStatus>>();
+        const status = response.data;
+        if (generation !== screenshotGeneration) return;
+        screenshotExpected = status.count;
+        if (status.count === 0) return;
+        screenshotTitle = mediaTitle(target);
+
+        await Promise.all(
+          status.items
+            .filter((item) => !loaded.has(item.index))
+            .map(async (item) => {
+              const blob = await api.get(item.url, { signal: controller.signal }).blob();
+              const url = URL.createObjectURL(blob);
+              if (generation !== screenshotGeneration || controller.signal.aborted) {
+                URL.revokeObjectURL(url);
+                return;
+              }
+              loaded.set(item.index, { ...item, url });
+            })
+        );
+        screenshots = [...loaded.values()].sort((a, b) => a.index - b.index);
+        screenshotLoading = status.pending;
+        if (!status.pending || status.error) return;
+        await new Promise<void>((resolve) => {
+          const timer = window.setTimeout(resolve, 1000);
+          controller.signal.addEventListener(
+            'abort',
+            () => {
+              window.clearTimeout(timer);
+              resolve();
+            },
+            { once: true }
+          );
+        });
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) console.error(error);
+    } finally {
+      if (generation === screenshotGeneration) {
+        screenshotLoading = false;
+        screenshotController = null;
+      }
+    }
+  }
+
+  function clearSelectedMedia() {
+    if (!_media) return;
+    _media = null;
+    _meta = null;
+    clearScreenshots();
+  }
+
+  function formatTimestamp(position: number): string {
+    const seconds = Math.round(position);
+    const minutes = Math.floor(seconds / 60);
+    return `${Math.floor(minutes / 60)
+      .toString()
+      .padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+  }
+
+  function showScreenshot(index: number) {
+    screenshotViewerOpen = true;
+    tick().then(() => {
+      screenshotViewer?.mount({
+        images: screenshots.map((screenshot) => screenshot.url),
+        image_count: screenshots.length,
+        initialIndex: index,
+        title: screenshotTitle
+      });
+    });
+  }
+
   /**
    * Select a child media item and load its details.
    *
@@ -99,31 +240,62 @@
       const data = await getDetails(item.id);
       _media = data;
       _meta = data.metadata ?? null;
+      void loadScreenshots(data);
     } catch (error) {
       console.error(error);
     }
+  }
+  function applyParentDetails(data: MediaItem) {
+    media = data;
+    meta = data.metadata ?? null;
+    if (technicalTimer) clearTimeout(technicalTimer);
+    technicalTimer = null;
+    if (data.technical_pending) {
+      technicalTimer = setTimeout(() => {
+        getDetails(data.id)
+          .then((refreshed) => {
+            if (media?.id === data.id) applyParentDetails(refreshed);
+          })
+          .catch((error) => console.error(error));
+      }, 1000);
+    }
+  }
+
+  async function refreshDetails() {
+    if (!media) return;
+    const data = await getDetails(media.id);
+    applyParentDetails(data);
   }
 
   // load the parent media item details on mount
   onMount(() => {
     loading.start();
     getDetails(Number(page.params.item_id))
-      .then((data) => {
-        media = data;
-        meta = data.metadata ?? null;
+      .then(async (data) => {
+        applyParentDetails(data);
+        if (!data.children?.length) {
+          void loadScreenshots(data);
+        } else {
+          const episodeId = Number(page.url.searchParams.get('episode_id'));
+          const episode = data.children.find((item) => item.id === episodeId);
+          if (episode) await selectMedia(episode);
+        }
       })
       .finally(() => {
         loading.end();
       });
+  });
+  onDestroy(() => {
+    if (technicalTimer) clearTimeout(technicalTimer);
+    clearScreenshots();
   });
 </script>
 
 <svelte:document
   onclick={(event) => {
     // clear the selected child media item when clicking outside
-    if (!(event.target as Element).closest('.media-part')) {
-      _media = null;
-      _meta = null;
+    if (!screenshotViewerOpen && !(event.target as Element).closest('.media-part, .media-screenshot')) {
+      clearSelectedMedia();
     }
   }}
 />
@@ -145,6 +317,18 @@
     >
       <iconify-icon icon={icons.backSolid} width="1.25rem" class="opacity-80"></iconify-icon>
     </button>
+
+    {#if $user?.role === 'admin'}
+      <MediaActions
+        item={media}
+        class="absolute dropdown-end top-2 right-2 z-1"
+        triggerClass="size-10 bg-blur-80"
+        onedit={refreshDetails}
+        onrename={refreshDetails}
+        ontag={refreshDetails}
+        onscrape={refreshDetails}
+      />
+    {/if}
 
     <!-- main content -->
     <div class="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
@@ -184,7 +368,22 @@
               <span class="badge badge-outline">{meta.country}</span>
             {/if}
             <Rating score={media.rating} class="h-6 border" />
+            {#each media.tags ?? [] as tag (tag)}
+              <span class="badge badge-soft badge-primary">#{tag}</span>
+            {/each}
           </div>
+          {#if technicalItems.length}
+            <div class="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+              {#each technicalItems as item (item.label)}
+                <div class="min-w-0">
+                  <div class="text-xs opacity-50">{item.label}</div>
+                  <div class="truncate text-sm font-medium tabular-nums">{item.value}</div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <ResourceRatings resourceType="media" resourceId={media.id} class="mt-1 max-w-xl" />
 
           <!-- tagline -->
           {#if meta?.tagline}
@@ -257,6 +456,43 @@
         </div>
       {/if}
 
+      {#if screenshotTitle}
+        <section class="media-screenshot mt-6">
+          <div class="mb-3 flex min-h-7 items-center justify-between gap-3">
+            <h2 class="text-lg font-semibold">{$_('media.screenshots')}</h2>
+            <div class="flex items-center gap-2 text-xs tabular-nums opacity-60">
+              <span>{screenshots.length} / {screenshotExpected}</span>
+              {#if screenshotLoading}<span class="loading loading-xs loading-spinner"></span>{/if}
+            </div>
+          </div>
+          {#if screenshots.length}
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {#each screenshots as screenshot, index (screenshot.position)}
+                <button
+                  class="group relative aspect-video w-full overflow-hidden rounded-sm bg-base-300 shadow-sm"
+                  aria-label={`${$_('media.screenshot')} ${index + 1}`}
+                  onclick={() => showScreenshot(index)}
+                >
+                  <Image
+                    src={screenshot.url}
+                    width="100%"
+                    ratio="16/9"
+                    class="transition-transform group-hover:scale-105"
+                  />
+                  <span class="absolute right-1.5 bottom-1.5 rounded-sm bg-black/65 px-1.5 py-0.5 text-xs text-white">
+                    {formatTimestamp(screenshot.position)}
+                  </span>
+                </button>
+              {/each}
+            </div>
+          {:else if screenshotLoading}
+            <div class="flex h-28 items-center justify-center">
+              <span class="loading loading-md loading-spinner opacity-60"></span>
+            </div>
+          {/if}
+        </section>
+      {/if}
+
       <!-- parts -->
       {#if parts.length}
         <div class="mt-6">
@@ -278,7 +514,17 @@
                     {mediaTitle(part)}
                   </span>
                   <span class="text-xs opacity-50">{part.aired}</span>
+                  {#if part.tags?.length}
+                    <span class="flex flex-wrap gap-1">
+                      {#each part.tags as tag (tag)}
+                        <span class="badge badge-soft badge-xs badge-primary">#{tag}</span>
+                      {/each}
+                    </span>
+                  {/if}
                 </div>
+                {#if part.duration}
+                  <span class="shrink-0 text-xs tabular-nums opacity-60">{formatMediaDuration(part.duration)}</span>
+                {/if}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <div
                   tabindex="0"
@@ -300,6 +546,36 @@
                     triggerClass="opacity-70"
                     onclick={() => {
                       selectMedia(part);
+                    }}
+                    onedit={() => {
+                      Promise.all([getDetails(media!.id), getDetails(part.id)]).then(([parent, episode]) => {
+                        media = parent;
+                        meta = parent.metadata ?? null;
+                        if (_media?.id === part.id) {
+                          _media = episode;
+                          _meta = episode.metadata ?? null;
+                        }
+                      });
+                    }}
+                    onrename={() => {
+                      Promise.all([getDetails(media!.id), getDetails(part.id)]).then(([parent, episode]) => {
+                        media = parent;
+                        meta = parent.metadata ?? null;
+                        if (_media?.id === part.id) {
+                          _media = episode;
+                          _meta = episode.metadata ?? null;
+                        }
+                      });
+                    }}
+                    ontag={() => {
+                      Promise.all([getDetails(media!.id), getDetails(part.id)]).then(([parent, episode]) => {
+                        media = parent;
+                        meta = parent.metadata ?? null;
+                        if (_media?.id === part.id) {
+                          _media = episode;
+                          _meta = episode.metadata ?? null;
+                        }
+                      });
                     }}
                     ondelete={() => {
                       // refresh the parent media details to update the parts list
@@ -334,5 +610,11 @@
 {#if playing}
   <div class="fixed inset-0 layer-1 max-sm:bottom-(--ks-dock-h)">
     <VideoPlayer bind:this={player} />
+  </div>
+{/if}
+
+{#if screenshotViewerOpen}
+  <div class="fixed inset-0 layer-2">
+    <ImageViewer bind:this={screenshotViewer} onback={() => (screenshotViewerOpen = false)} />
   </div>
 {/if}

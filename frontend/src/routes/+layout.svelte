@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onNavigate } from '$app/navigation';
-  import { Alerts, DownloadPrompt, Messages } from '$lib/components';
+  import {
+    Alerts,
+    ComicDownloadPrompt,
+    DownloadPrompt,
+    Messages,
+    PlaybackLinksPrompt
+  } from '$lib/components';
   import { user } from '$lib/stores';
   import { sniffer, throttle } from '$lib/utils';
   import type { Snippet } from 'svelte';
@@ -59,6 +65,8 @@
 <Alerts />
 <Messages />
 <DownloadPrompt />
+<ComicDownloadPrompt />
+<PlaybackLinksPrompt />
 {#await import('$lib/components/common/feature/ReloadPrompt.svelte') then { default: ReloadPrompt }}
   <ReloadPrompt />
 {/await}

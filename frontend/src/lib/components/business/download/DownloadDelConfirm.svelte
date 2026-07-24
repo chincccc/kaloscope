@@ -6,12 +6,12 @@
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
 
-  let { onconfirm }: { onconfirm?: () => void } = $props();
-  let taskIds = $state<number[]>([]);
+  let { onconfirm, endpoint = 'download/delete' }: { onconfirm?: () => void; endpoint?: string } = $props();
+  let taskIds = $state<(number | string)[]>([]);
 
   // the modal dialog instance
   let modal: Modal;
-  export const showModal = (ids: number | number[]) => {
+  export const showModal = (ids: number | string | (number | string)[]) => {
     taskIds = Array.isArray(ids) ? ids : [ids];
     modal.show();
   };
@@ -33,7 +33,7 @@
   function del(form: HTMLFormElement, data: FormData) {
     loading.start();
     api
-      .post('download/delete', {
+      .post(endpoint, {
         json: { ids: taskIds, local: !!data.get('local') }
       })
       .then(() => {

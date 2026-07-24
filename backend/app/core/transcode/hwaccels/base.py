@@ -53,6 +53,7 @@ class MediaProbe:
     chapters: tuple[MediaChapter, ...] = ()
     avg_frame_rate: Fraction | None = None
     r_frame_rate: Fraction | None = None
+    bitrate: int | None = None
     codec: str | None = None
     profile: str | None = None
     pixel_format: str | None = None

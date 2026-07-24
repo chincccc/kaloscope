@@ -15,6 +15,7 @@
     Modal,
     Paginator,
     Search,
+    SearchHistoryChips,
     SearchHit,
     type PaginatorProps
   } from '$lib/components';
@@ -80,6 +81,8 @@
 
   // the standalone display mode media query
   const standaloneMode = new MediaQuery('(display-mode: standalone)');
+  let searchValue = $state('');
+  let history: SearchHistoryChips | null = $state(null);
 
   // capture the scroll position of the current page
   beforeNavigate(({ from, to }) => {
@@ -228,10 +231,20 @@
 
     // record search history
     if (query.keyword && indexerId) {
-      api.post('user/history/record', {
-        json: { rel_type: 'search', rel_id: indexerId, keyword: query.keyword }
-      });
+      api
+        .post('user/history/record', {
+          json: { rel_type: 'search', rel_id: indexerId, keyword: query.keyword }
+        })
+        .then(() => history?.refresh());
     }
+  }
+
+  function submitSearch(value: string) {
+    const keyword = value.trim();
+    query.keyword = keyword;
+    searchValue = keyword;
+    query.page_num = 1;
+    search(true);
   }
 
   let _indexerId: string | null = null;
@@ -250,7 +263,8 @@
         viewModes = (Array.isArray(modes) && modes.length > 0 ? modes : ['table']) as ViewModes;
         // initialize query parameters
         const params = page.url.searchParams;
-        query.keyword = params.get('keyword') || '';
+        const restore = params.get('restore') === 'false';
+        query.keyword = restore ? params.get('keyword') || '' : '';
         query.filters = params.get('filters') || '';
         query.page_num = Number(params.get('page_num')) || 1;
         query.page_size = (display?.page_size ?? Number(params.get('page_size'))) || 20;
@@ -285,24 +299,31 @@
     itemClass="rounded-sm bg-base-100 shadow-sm lg:hover:shadow-lg lg:mb-4"
   >
     {#snippet filters()}
-      <Search
-        manual
-        required={keyword?.required}
-        label={$_('field.keyword')}
-        bind:value={query.keyword}
-        onsearch={() => {
-          query.page_num = 1;
-          search(true);
-        }}
-        schema={querySchema}
-        filters={query.filters}
-        onfilter={(value) => {
-          query.page_num = 1;
-          query.filters = value;
-          search(true);
-        }}
-        maxWidth="36rem"
-      />
+      <div class="flex w-full max-w-xl flex-col items-center gap-2">
+        <Search
+          manual
+          required={keyword?.required}
+          label={$_('field.keyword')}
+          bind:value={searchValue}
+          onsearch={submitSearch}
+          schema={querySchema}
+          filters={query.filters}
+          onfilter={(value) => {
+            query.page_num = 1;
+            query.filters = value;
+            search(true);
+          }}
+          maxWidth="100%"
+          class="w-full"
+        />
+        <SearchHistoryChips
+          bind:this={history}
+          relId={Number(indexerId)}
+          onselect={(value) => {
+            submitSearch(value);
+          }}
+        />
+      </div>
     {/snippet}
 
     {#snippet actions()}
