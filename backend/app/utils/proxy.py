@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Mapping
+from pathlib import PurePosixPath
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from pydantic import BaseModel, Field
@@ -58,7 +59,10 @@ def _remote_media_proxy_url(url: str, referer: str | None, ua: str | None) -> st
         params["referer"] = referer
     if ua:
         params["ua"] = ua
-    return f"/_api/media/proxy?{urlencode(params)}"
+    filename = PurePosixPath(urlparse(url).path).name
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", filename or ""):
+        filename = "stream"
+    return f"/_api/media/proxy/{filename}?{urlencode(params)}"
 
 
 def rewrite_hls_playlist(
@@ -138,7 +142,9 @@ def remote_proxy_request(
         for key, value in (request_headers or {}).items()
         if str(key).lower() not in dropped
     }
-    headers["Referer"] = referer or url
+    parsed_referer = urlparse(referer or "")
+    if parsed_referer.scheme in {"http", "https"} and parsed_referer.hostname:
+        headers["Referer"] = referer
     if user_agent:
         headers["User-Agent"] = user_agent
     return url, headers

@@ -193,6 +193,7 @@
           .then(() => history?.refresh());
       }
       url.searchParams.delete('keyword');
+      // eslint-disable-next-line svelte/no-navigation-without-resolve
       replaceState(url, page.state);
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
@@ -231,6 +232,7 @@
     const url = new URL(page.url);
     url.searchParams.delete('keyword');
     url.searchParams.delete('restore');
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
     replaceState(url, page.state);
     if (restoredKeyword) void search(restoredKeyword);
     return () => controller?.abort();
@@ -330,7 +332,7 @@
       {#if total === 0}
         <div class="flex h-48 items-center justify-center opacity-60">{$_('media.local_search.empty')}</div>
       {:else}
-        {#each ['movies', 'tv_shows', 'episodes'] as group}
+        {#each ['movies', 'tv_shows', 'episodes'] as group (group)}
           {@const items = results[group as 'movies' | 'tv_shows' | 'episodes']}
           {#if items.length}
             <section class="mt-8">
@@ -382,7 +384,7 @@
           {/if}
         {/each}
 
-        {#each ['books', 'images'] as group}
+        {#each ['books', 'images'] as group (group)}
           {@const items = results[group as 'books' | 'images']}
           {#if items.length}
             <section class="mt-8">

@@ -1,6 +1,8 @@
 export { default as DownloadDelConfirm } from './download/DownloadDelConfirm.svelte';
 export {
   comicDownloadPrompt,
+  builtinDownloadPrompt,
+  hasBuiltinDownload,
   hasComicDownload,
   default as ComicDownloadPrompt
 } from './download/ComicDownloadPrompt.svelte';

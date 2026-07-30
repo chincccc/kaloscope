@@ -418,7 +418,7 @@ export type DownloadDir = {
 export type DownloadTask = {
   id: number;
   key: string;
-  task_type: 'torrent' | 'comic';
+  task_type: 'torrent' | 'comic' | 'video' | 'hls';
   created_at: string;
   updated_at: string;
   downloader_id: number | null;
@@ -453,8 +453,12 @@ export type ComicDownloadTask = {
   created_at: string;
   updated_at: string;
   gallery_id: number | null;
+  media_lib_id: number | null;
+  download_type: 'comic' | 'video' | 'hls';
   dir: string;
   name: string;
+  title: string | null;
+  cover: string | null;
   final_path: string;
   state: keyof typeof DownloadState;
   error_msg: string | null;
@@ -721,6 +725,8 @@ export type Resource = Optional<{
   uploaded_at: string;
   media_type: 'video' | 'audio' | 'image' | 'text';
   url: string;
+  /** Source page used as the Referer when proxying remote media. */
+  referer: string;
   video_type: 'mp4' | 'flv' | 'hls' | 'dash';
   text: string | string[];
   images: string[];
@@ -730,10 +736,12 @@ export type Resource = Optional<{
   danmakus: Danmaku[];
   favorite: boolean;
   download: {
+    type?: 'comic' | 'video' | 'hls' | null;
     url: string;
     filename?: string | null;
     headers?: Record<string, string> | null;
     gallery_id?: number | null;
+    media_lib_id?: number | null;
   };
 }>;
 

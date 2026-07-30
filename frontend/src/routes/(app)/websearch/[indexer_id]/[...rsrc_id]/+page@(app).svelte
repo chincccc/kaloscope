@@ -6,8 +6,8 @@
     Overlay,
     TextViewer,
     VideoPlayer,
-    comicDownloadPrompt,
-    hasComicDownload
+    builtinDownloadPrompt,
+    hasBuiltinDownload
   } from '$lib/components';
   import { createLoading } from '$lib/helpers';
   import { _ } from '$lib/i18n';
@@ -44,10 +44,23 @@
   let imageViewer: ImageViewer | null = $state(null);
   // the video player instance
   let videoPlayer: VideoPlayer | null = $state(null);
-  let sourcePage: string = $derived(query.resource_id ?? page.params.rsrc_id);
+  let sourcePage: string | undefined = $derived(resolveReferer(resource));
 
   // the loading state
   const loading = createLoading();
+
+  /**
+   * Resolve a valid upstream Referer without mistaking an opaque resource ID for a URL.
+   */
+  function resolveReferer(rsrc: Resource | null): string | undefined {
+    const candidates = [rsrc?.referer, rsrc?.link, query.resource_id, page.params.rsrc_id];
+    for (const candidate of candidates) {
+      if (/^https?:\/\//i.test(candidate ?? '')) {
+        return candidate ?? undefined;
+      }
+    }
+    return undefined;
+  }
 
   // the active chapter ID
   let activeChapterId: string | null = $state(null);
@@ -231,12 +244,16 @@
       <VideoPlayer bind:this={videoPlayer} />
     {/if}
   {/key}
-  {#if resource && hasComicDownload(resource) && $user?.role === 'admin'}
+  {#if resource && hasBuiltinDownload(resource) && $user?.role === 'admin'}
     <button
-      class="btn fixed top-1.5 right-12 z-4 border-0 bg-black/50 btn-ghost text-white/80 shadow-none btn-xs"
-      aria-label={$_('download.comic.title')}
-      title={$_('download.comic.title')}
-      onclick={() => resource && comicDownloadPrompt(resource)}
+      class="btn fixed top-1.5 right-12 z-[10001] border-0 bg-black/50 btn-ghost text-white/80 shadow-none btn-xs"
+      aria-label={$_(resource.download?.type === 'comic' ? 'download.comic.title' : 'download.video.title')}
+      title={$_(resource.download?.type === 'comic' ? 'download.comic.title' : 'download.video.title')}
+      onpointerdown={(event) => event.stopPropagation()}
+      onclick={(event) => {
+        event.stopPropagation();
+        if (resource) builtinDownloadPrompt(resource);
+      }}
     >
       <iconify-icon icon={icons.download} width="1.25rem"></iconify-icon>
     </button>

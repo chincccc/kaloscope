@@ -110,6 +110,7 @@
     const isHls = videoType?.toLowerCase() === 'hls' || /\.m3u8(?:[?#]|$)/i.test(url);
     const isDirectSignedHls = isHls && /^https?:\/\/(?:[^/]+\.)?rdtcdn\.com(?:[/:]|$)/i.test(url);
     if (proxy && !isDirectSignedHls && /^https?:\/\//i.test(url)) {
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
       const params = new URLSearchParams({ url });
       if (referer) {
         params.set('referer', referer);
@@ -278,7 +279,7 @@
         .filter((d) => d.url && d.definition)
         .map((d) => ({
           ...d,
-          url: resolvePlaybackUrl(d.url, options.videoType, options.proxy, options.referer)
+          url: resolvePlaybackUrl(d.url, options.videoType, options.proxy ?? false, options.referer)
         }))
         .filter((d) => d.url);
     }
@@ -328,12 +329,12 @@
       return;
     }
 
-    let url = resolvePlaybackUrl(options.url, options.videoType, options.proxy, options.referer);
+    let url = resolvePlaybackUrl(options.url, options.videoType, options.proxy ?? false, options.referer);
+    const normalizedVideoType = options.videoType?.toLowerCase();
     const remoteMp4 =
       options.proxy &&
-      !options.videoType &&
-      /\.mp4(?:[/?#]|$)/i.test(options.url) &&
-      !/\.m3u8(?:[?#]|$)/i.test(options.url);
+      (normalizedVideoType === 'mp4' ||
+        (!normalizedVideoType && /\.mp4(?:[/?#]|$)/i.test(options.url) && !/\.m3u8(?:[?#]|$)/i.test(options.url)));
     // Remote signed MP4 files are more reliable through the browser's native
     // media pipeline than xgplayer's MSE parser, especially across redirects.
     const playerVideoType = remoteMp4 ? 'native' : options.videoType;
@@ -343,8 +344,10 @@
 
     // probe the media to get the duration and progress dots
     const { duration, progressDot } = await videoSettings.probeMedia(url);
+    const mediaDuration = duration ?? 0;
     const startTime =
-      options.startTime ?? (options.randomStart && duration > 1 ? duration * (0.1 + Math.random() * 0.7) : undefined);
+      options.startTime ??
+      (options.randomStart && mediaDuration > 1 ? mediaDuration * (0.1 + Math.random() * 0.7) : undefined);
 
     // if the player is already mounted, just switch the URL
     if (player) {
@@ -358,7 +361,7 @@
     }
 
     // create a new player instance
-    SimplePlayer.defaultPreset = DefaultPreset;
+    (SimplePlayer as unknown as { defaultPreset: typeof DefaultPreset }).defaultPreset = DefaultPreset;
     player = new SimplePlayer({
       id: id,
       url: url,

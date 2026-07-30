@@ -213,8 +213,10 @@ export function videoPlugins(videoType: string | null | undefined, url: IUrl | u
     }
   } else if (videoType === 'hls') {
     // https://h5player.bytedance.com/plugins/extension/xgplayer-hls.html
-    const native = document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
-    if (!native && HLS.isSupported()) {
+    // Chromium may report native HLS support through the OS media stack while
+    // still failing to decode MPEG-TS playlists. Keep native HLS for iOS and
+    // use the MSE-based plugin everywhere else when it is available.
+    if (!sniffer.isIos() && HLS.isSupported()) {
       return [HLS];
     }
   } else if (videoType === 'dash') {

@@ -34,10 +34,15 @@
   const saving = createLoading();
 
   let isEpisode = $derived(source.episode !== null);
-  let episodePosters = $derived(
-    item?.lib?.lib_type === 'tv_show' && !isEpisode ? (item.children ?? []).filter((child) => child.poster) : []
-  );
-  let canExtractFrames = $derived(Boolean(item && (!item.children || item.children.length === 0)));
+  let episodePosters = $derived.by(() => {
+    const current = item;
+    if (!current || current.lib?.lib_type !== 'tv_show' || isEpisode) return [];
+    return (current.children ?? []).filter((child: MediaItem) => child.poster);
+  });
+  let canExtractFrames = $derived.by(() => {
+    const current = item;
+    return Boolean(current && (!current.children || current.children.length === 0));
+  });
   let selectedFrameUrl = $derived(frameOptions.find((option) => option.position === selectedFrame)?.url ?? null);
   let displayPoster = $derived(preview ?? selectedFrameUrl ?? poster);
   let posterRatio = $derived(isEpisode ? '16/9' : '2/3');
@@ -201,7 +206,7 @@
                 <span
                   class="absolute right-1 bottom-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-content"
                 >
-                  <iconify-icon icon={icons.check} width="1rem"></iconify-icon>
+                  <iconify-icon icon={icons.checkmark} width="1rem"></iconify-icon>
                 </span>
               {/if}
             </button>
@@ -234,7 +239,7 @@
                   <span
                     class="absolute right-1 bottom-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-content"
                   >
-                    <iconify-icon icon={icons.check} width="1rem"></iconify-icon>
+                    <iconify-icon icon={icons.checkmark} width="1rem"></iconify-icon>
                   </span>
                 {/if}
               </button>

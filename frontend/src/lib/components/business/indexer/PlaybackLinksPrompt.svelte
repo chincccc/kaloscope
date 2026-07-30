@@ -12,6 +12,7 @@
 
   export function getPlaybackLinks(resource: Resource): PlaybackLink[] {
     const result: PlaybackLink[] = [];
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const seen = new Set<string>();
     const append = (url: string | null | undefined, label: string | number | null = null) => {
       const value = url?.trim();
@@ -74,15 +75,14 @@
         </div>
         <div class="flex items-start gap-2">
           <textarea
-            class="textarea min-h-18 grow resize-y break-all font-mono text-xs"
+            class="textarea min-h-18 grow resize-y font-mono text-xs break-all"
             value={link.url}
             readonly
-            aria-label={link.label || $_('media.primary_stream')}
-          ></textarea>
+            aria-label={link.label || $_('media.primary_stream')}></textarea>
           {#if typeof navigator !== 'undefined' && navigator.clipboard}
             <Button
-              icon={icons.copy}
-              title={$_('action.copy', $_('field.link'))}
+              icon={icons.documentCopy}
+              text={$_('action.copy', $_('field.link'))}
               onclick={() => copy(link.url)}
             />
           {/if}

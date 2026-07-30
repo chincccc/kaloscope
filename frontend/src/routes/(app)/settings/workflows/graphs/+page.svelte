@@ -101,9 +101,7 @@
           loading.end();
           return;
         }
-        return api
-          .post(`flow/graph/${id}/publish`, { json: data.draft })
-          .then(() => search(pagination.current));
+        return api.post(`flow/graph/${id}/publish`, { json: data.draft }).then(() => search(pagination.current));
       })
       .catch(() => loading.end());
   }
@@ -115,25 +113,19 @@
       const details = await Promise.all(
         selected.map((graph) => api.get(`flow/graph/${graph.id}`).json<Resp<FlowGraph>>())
       );
-      const publishable = details
-        .map(({ data }) => data)
-        .filter((graph) => !!graph.draft?.nodes.length);
+      const publishable = details.map(({ data }) => data).filter((graph) => !!graph.draft?.nodes.length);
       if (publishable.length === 0) {
         alert({ level: 'error', message: 'invalid_flow_graph' });
         loading.end();
         return;
       }
 
-      await Promise.all(
-        publishable.map((graph) =>
-          api.post(`flow/graph/${graph.id}/publish`, { json: graph.draft })
-        )
-      );
+      await Promise.all(publishable.map((graph) => api.post(`flow/graph/${graph.id}/publish`, { json: graph.draft })));
       const skipped = selected.length - publishable.length;
       alert({
         level: 'success',
         message: skipped
-          ? $_('alert.publish_items_partial', publishable.length, skipped)
+          ? $_('alert.publish_items_partial', [publishable.length, skipped])
           : $_('alert.publish_items_success', publishable.length)
       });
       search(pagination.current);
@@ -145,9 +137,7 @@
   /** Publish the saved drafts of the selected flow graphs. */
   function batchPublish() {
     const selectedKeys = new Set(headerCheckbox.getSelectedKeys());
-    const selected = graphs.filter(
-      (graph) => selectedKeys.has(String(graph.id)) && graph.state !== 'published'
-    );
+    const selected = graphs.filter((graph) => selectedKeys.has(String(graph.id)) && graph.state !== 'published');
     if (selected.length === 0) {
       alert({ message: 'select_publish_items' });
       return;
@@ -209,9 +199,7 @@
    * Export the flow graphs as a zip file.
    */
   function exportGraphs() {
-    const exportableKeys = new Set(
-      graphs.filter((graph) => graph.state !== 'draft').map((graph) => String(graph.id))
-    );
+    const exportableKeys = new Set(graphs.filter((graph) => graph.state !== 'draft').map((graph) => String(graph.id)));
     const selectedKeys = headerCheckbox.getSelectedKeys().filter((key) => exportableKeys.has(key));
     if (selectedKeys.length === 0) {
       alert({ message: 'select_export_items' });

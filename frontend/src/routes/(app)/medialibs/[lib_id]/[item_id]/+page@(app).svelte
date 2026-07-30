@@ -149,6 +149,7 @@
     const controller = new AbortController();
     screenshotController = controller;
     screenshotLoading = true;
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const loaded = new Map<number, Screenshot>();
 
     try {

@@ -61,7 +61,9 @@
 </script>
 
 <section
-  class="rounded-sm border p-3 {dark ? 'border-white/15 bg-black/70 text-white backdrop-blur-sm' : 'border-base-300 bg-base-100'} {className}"
+  class="rounded-sm border p-3 {dark
+    ? 'border-white/15 bg-black/70 text-white backdrop-blur-sm'
+    : 'border-base-300 bg-base-100'} {className}"
   aria-label={$_('rating.title')}
 >
   <div class="mb-2 flex min-h-6 items-center gap-2">
@@ -77,7 +79,7 @@
           {#if dimension.editable}
             <input
               type="range"
-              class="range min-w-24 range-xs range-primary"
+              class="range min-w-24 range-primary range-xs"
               min="1"
               max="10"
               step="1"
@@ -96,7 +98,7 @@
             <span class="text-xs opacity-50">/10</span>
             {#if dimension.editable && dimension.score !== null}
               <button
-                class="btn btn-circle size-5 border-0 bg-transparent p-0 shadow-none btn-ghost"
+                class="btn btn-circle size-5 border-0 bg-transparent btn-ghost p-0 shadow-none"
                 aria-label={$_('rating.clear')}
                 title={$_('rating.clear')}
                 disabled={saving !== null}

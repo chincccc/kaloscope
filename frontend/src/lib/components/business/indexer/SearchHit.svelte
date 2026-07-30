@@ -80,16 +80,15 @@
     Rating,
     Ranking,
     Uploader,
-    comicDownloadPrompt,
+    builtinDownloadPrompt,
     downloadPrompt,
-    hasComicDownload,
+    hasBuiltinDownload,
     hasPlaybackLinks,
     playbackLinksPrompt
   } from '$lib/components';
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
   import { user } from '$lib/stores';
-  import type { Resp } from '$lib/types';
   import { isDashSupported } from '$lib/utils';
   import { UAParser } from 'ua-parser-js';
 
@@ -195,8 +194,9 @@
         }
       }
     }
+    const routeId = encodeURIComponent(rsrcId);
     const queryString = searchParams.size > 0 ? `?${searchParams.toString()}` : '';
-    return `/websearch/${indexerId}/${rsrcId}${queryString}`;
+    return `/websearch/${indexerId}/${routeId}${queryString}`;
   }
 </script>
 
@@ -255,13 +255,13 @@
         onclick: showPlaybackLinks
       },
       {
-        condition: hasComicDownload(rsrc) && $user?.role === 'admin',
+        condition: hasBuiltinDownload(rsrc) && $user?.role === 'admin',
         icon: icons.download,
         text: $_('action.download'),
-        onclick: () => comicDownloadPrompt(rsrc)
+        onclick: () => builtinDownloadPrompt(rsrc)
       },
       {
-        condition: !!rsrc.link && !hasComicDownload(rsrc) && $user?.role === 'admin',
+        condition: !!rsrc.link && !hasBuiltinDownload(rsrc) && $user?.role === 'admin',
         icon: icons.download,
         text: $_('action.download'),
         onclick: () => downloadPrompt(rsrc.link)
@@ -304,7 +304,7 @@
         {#if playable}
           <Button
             icon={icons.info}
-            title={$_('media.playback_links')}
+            text={$_('media.playback_links')}
             loading={resolvingLinks}
             class={btnClass}
             onclick={(event) => {
@@ -313,13 +313,13 @@
             }}
           />
         {/if}
-        {#if hasComicDownload(rsrc) && $user?.role === 'admin'}
+        {#if hasBuiltinDownload(rsrc) && $user?.role === 'admin'}
           <Button
             icon={icons.download}
             class={btnClass}
             onclick={(event) => {
               event.stopPropagation();
-              comicDownloadPrompt(rsrc);
+              builtinDownloadPrompt(rsrc);
             }}
           />
         {:else if rsrc.link && $user?.role === 'admin'}

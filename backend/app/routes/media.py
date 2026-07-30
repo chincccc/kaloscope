@@ -669,10 +669,11 @@ async def serve_hls_file(
     )
 
 
-@media.get("/proxy")
+@media.get("/proxy", name="proxy_remote_media")
+@media.get("/proxy/<filename:str>", name="proxy_remote_media_named")
 @validate(query=RemoteProxy)
 async def proxy_remote_media(
-    request: Request, query: RemoteProxy
+    request: Request, query: RemoteProxy, filename: str | None = None
 ) -> HTTPResponse | ResponseStream:
     """Proxy a remote media stream from the given URL."""
     url, headers = remote_proxy_request(
@@ -718,6 +719,8 @@ async def proxy_remote_media(
                     continue
                 if value := response.headers.get(header):
                     stream.response.headers[header.title()] = value
+            if response.status_code == 206 and response.headers.get("content-range"):
+                stream.response.headers.setdefault("Accept-Ranges", "bytes")
             if is_hls:
                 stream.response.headers["Content-Type"] = (
                     "application/vnd.apple.mpegurl"

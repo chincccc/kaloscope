@@ -174,7 +174,7 @@
       {@const downloader = downloaders.find((d) => d.id === task.downloader_id)}
       {#if downloader}
         <Badge>{downloader.name}</Badge>
-      {:else if task.task_type === 'comic'}
+      {:else if task.task_type !== 'torrent'}
         <Badge>{$_('download.builtin')}</Badge>
       {/if}
     </Cell>

@@ -1,12 +1,6 @@
 <script lang="ts">
   import { onNavigate } from '$app/navigation';
-  import {
-    Alerts,
-    ComicDownloadPrompt,
-    DownloadPrompt,
-    Messages,
-    PlaybackLinksPrompt
-  } from '$lib/components';
+  import { Alerts, ComicDownloadPrompt, DownloadPrompt, Messages, PlaybackLinksPrompt } from '$lib/components';
   import { user } from '$lib/stores';
   import { sniffer, throttle } from '$lib/utils';
   import type { Snippet } from 'svelte';

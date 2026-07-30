@@ -115,7 +115,7 @@
   function pause(task: DownloadTask) {
     loadingIds.add(task.key);
     const startTime = new Date().getTime();
-    const endpoint = task.task_type === 'comic' ? 'download/comic/pause' : 'download/pause';
+    const endpoint = task.task_type === 'torrent' ? 'download/pause' : 'download/builtin/pause';
     api
       .post(endpoint, { json: { ids: [task.id] } })
       .then(() => {
@@ -138,7 +138,7 @@
   function start(task: DownloadTask) {
     loadingIds.add(task.key);
     const startTime = new Date().getTime();
-    const endpoint = task.task_type === 'comic' ? 'download/comic/start' : 'download/start';
+    const endpoint = task.task_type === 'torrent' ? 'download/start' : 'download/builtin/start';
     api
       .post(endpoint, { json: { ids: [task.id] } })
       .then(() => {
@@ -232,7 +232,7 @@
       {@const downloader = downloaders.find((d) => d.id === task.downloader_id)}
       {#if downloader}
         <Badge>{downloader.name}</Badge>
-      {:else if task.task_type === 'comic'}
+      {:else if task.task_type !== 'torrent'}
         <Badge>{$_('download.builtin')}</Badge>
       {/if}
     </Cell>
@@ -257,7 +257,7 @@
         <div class="flex justify-between gap-2 text-xs opacity-50">
           <span>{task.ratio}</span>
           <span>
-            {task.task_type === 'comic' && task.total_size === null && !task.dl_speed
+            {task.state === 'downloading' && task.task_type !== 'torrent' && task.total_size === null && !task.dl_speed
               ? $_('download.waiting_response')
               : task.estimate}
           </span>
@@ -275,7 +275,7 @@
           onclick: () => pause(task)
         },
         {
-          condition: task.state === 'paused' || (task.task_type === 'comic' && task.state === 'error'),
+          condition: task.state === 'paused' || (task.task_type !== 'torrent' && task.state === 'error'),
           loading: loadingIds.has(task.key),
           class: '[&_iconify-icon]:text-surface/80',
           icon: icons.playFilled,

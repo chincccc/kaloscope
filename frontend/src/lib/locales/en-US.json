@@ -380,6 +380,9 @@
     "comic": {
       "title": "Download Comic to Gallery"
     },
+    "video": {
+      "title": "Download Video to Media Library"
+    },
     "downloader": {
       "title": "Downloader",
       "preset": "Preset",

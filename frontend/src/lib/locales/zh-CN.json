@@ -380,6 +380,9 @@
     "comic": {
       "title": "下载漫画到图库"
     },
+    "video": {
+      "title": "下载视频到媒体库"
+    },
     "downloader": {
       "title": "下载器",
       "preset": "预设",

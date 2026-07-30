@@ -27,6 +27,7 @@
   }
 
   function addInput() {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const known = new Set(tags.map((tag) => tag.toLocaleLowerCase()));
     for (const tag of input.split(/[\s_#]+/u).map((value) => value.trim())) {
       if (tag && !known.has(tag.toLocaleLowerCase())) {

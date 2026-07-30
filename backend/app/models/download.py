@@ -44,6 +44,12 @@ class DownloadState(StrEnum):
     ERROR = auto()
 
 
+class BuiltinDownloadType(StrEnum):
+    COMIC = "comic"
+    VIDEO = "video"
+    HLS = "hls"
+
+
 class TransferMethod(StrEnum):
     HARDLINK = auto()
     SYMLINK = auto()
@@ -212,6 +218,12 @@ class DownloadTask(TortoiseModel):
 
 
 class ComicDownloadTask(TortoiseModel):
+    download_type = CharEnumField(
+        max_length=16,
+        enum_type=BuiltinDownloadType,
+        default=BuiltinDownloadType.COMIC,
+        null=True,
+    )
     gallery_id: int | None
     gallery = ForeignKeyField(
         "models.Gallery",
@@ -220,8 +232,18 @@ class ComicDownloadTask(TortoiseModel):
         null=True,
         on_delete=SET_NULL,
     )
+    media_lib_id: int | None
+    media_lib = ForeignKeyField(
+        "models.MediaLib",
+        related_name="builtin_download_tasks",
+        db_index=True,
+        null=True,
+        on_delete=SET_NULL,
+    )
     url = TextField()
     request_headers = JSONField[dict[str, str] | None](null=True)
+    title = CharField(max_length=255, null=True)
+    cover = TextField(null=True)
     dir = CharField(max_length=4096)
     name = CharField(max_length=255)
     temp_path = CharField(max_length=4096)
@@ -260,7 +282,13 @@ class ComicDownloadTask(TortoiseModel):
         ordering = ["-created_at"]
 
     class PydanticMeta:
-        exclude = ("gallery", "url", "request_headers", "temp_path")
+        exclude = (
+            "gallery",
+            "media_lib",
+            "url",
+            "request_headers",
+            "temp_path",
+        )
         computed = ("ratio", "estimate")
 
 
@@ -306,11 +334,14 @@ class DownloadAdd(BaseModel, RequestFilesMixin):
 
 
 class ComicDownloadAdd(BaseModel):
+    type: BuiltinDownloadType = BuiltinDownloadType.COMIC
     url: str = Field(min_length=1, max_length=8192)
     title: str = Field(min_length=1, max_length=255)
+    cover: str | None = Field(max_length=8192, default=None)
     filename: str | None = Field(min_length=1, max_length=255, default=None)
     headers: dict[str, str] = Field(default_factory=dict)
-    gallery_id: PositiveInt
+    gallery_id: PositiveInt | None = None
+    media_lib_id: PositiveInt | None = None
 
     @model_validator(mode="after")
     def validate_request(self) -> Self:
@@ -328,6 +359,10 @@ class ComicDownloadAdd(BaseModel):
         ):
             raise ValueError("invalid request header")
         self.url = url
+        if self.type == BuiltinDownloadType.COMIC and not self.gallery_id:
+            raise ValueError("gallery_id is required for comic downloads")
+        if self.type != BuiltinDownloadType.COMIC and not self.media_lib_id:
+            raise ValueError("media_lib_id is required for video downloads")
         return self
 
 

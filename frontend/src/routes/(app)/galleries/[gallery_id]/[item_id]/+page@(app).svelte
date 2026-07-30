@@ -31,6 +31,7 @@
   let failed = $state(false);
   let ratingsOpen = $state(false);
   let controller: AbortController | null = null;
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const objectUrls = new Set<string>();
 
   function releaseObjectUrls() {
@@ -92,6 +93,7 @@
       });
 
       if (replaceState) {
+        // eslint-disable-next-line svelte/prefer-svelte-reactivity
         const url = new URL(page.url);
         url.pathname = `/galleries/${page.params.gallery_id}/${entryItemId}`;
         url.searchParams.set('chapter_id', String(itemId));
@@ -127,7 +129,7 @@
   {/if}
   <ImageViewer bind:this={imageViewer} />
   <button
-    class="btn fixed top-1.5 right-12 z-4 border-0 bg-black/50 text-white/80 shadow-none btn-ghost btn-xs"
+    class="btn fixed top-1.5 right-12 z-4 border-0 bg-black/50 btn-ghost text-white/80 shadow-none btn-xs"
     class:btn-active={ratingsOpen}
     aria-label={$_('rating.title')}
     title={$_('rating.title')}
@@ -136,10 +138,7 @@
     <iconify-icon icon={icons.starFilled} width="1.25rem"></iconify-icon>
   </button>
   {#if ratingsOpen}
-    <button
-      class="fixed inset-0 z-2 bg-black/10"
-      aria-label={$_('action.close')}
-      onclick={() => (ratingsOpen = false)}
+    <button class="fixed inset-0 z-2 bg-black/10" aria-label={$_('action.close')} onclick={() => (ratingsOpen = false)}
     ></button>
     <ResourceRatings
       resourceType="gallery_book"

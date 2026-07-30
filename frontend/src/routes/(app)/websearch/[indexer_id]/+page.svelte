@@ -1,3 +1,27 @@
+<script lang="ts" module>
+  import type { Resource, ViewMode, ViewModes } from '$lib/types';
+
+  type SearchReturnState = {
+    resources: Resource[];
+    keyword: string;
+    searchValue: string;
+    filters: string | null | undefined;
+    pageNum: number;
+    pageSize: number;
+    viewMode: ViewMode;
+    viewModes: ViewModes | undefined;
+    loggedUser: string | null;
+    pagination: {
+      total?: number | null;
+      totalPages?: number | null;
+      simpleMode?: boolean;
+    };
+  };
+
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  const searchReturnStates = new Map<string, SearchReturnState>();
+</script>
+
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -23,8 +47,8 @@
   import { _ } from '$lib/i18n';
   import { icons } from '$lib/icons';
   import { captureScrollPosition, restorePosition } from '$lib/stores';
-  import type { IndexerAuth, Page, Resource, Resp, ViewMode, ViewModes } from '$lib/types';
-  import { aspectRatio, sniffer } from '$lib/utils';
+  import type { IndexerAuth, Page, Resp } from '$lib/types';
+  import { aspectRatio, normalizePathname, sniffer } from '$lib/utils';
   import { tick, untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { queryParameters, ssp } from 'sveltekit-search-params';
@@ -86,6 +110,27 @@
 
   // capture the scroll position of the current page
   beforeNavigate(({ from, to }) => {
+    const fromPath = from?.url && normalizePathname(from.url.pathname);
+    const toPath = to?.url && normalizePathname(to.url.pathname);
+    const listPath = `/websearch/${indexerId}`;
+    if (fromPath === listPath && toPath?.startsWith(`${listPath}/`)) {
+      searchReturnStates.set(indexerId, {
+        resources: resources.map((resource) => ({ ...resource })),
+        keyword: query.keyword,
+        searchValue,
+        filters: query.filters,
+        pageNum: query.page_num,
+        pageSize: query.page_size,
+        viewMode: query.view_mode as ViewMode,
+        viewModes: viewModes ? ([...viewModes] as ViewModes) : undefined,
+        loggedUser,
+        pagination: {
+          total: pagination.total,
+          totalPages: pagination.totalPages,
+          simpleMode: pagination.simpleMode
+        }
+      });
+    }
     captureScrollPosition(from, to, view, standaloneMode.current);
   });
 
@@ -255,6 +300,27 @@
         if (!data.menus[1]?.routes.some((r) => r.path === `/websearch/${indexerId}`)) {
           const route = data.menus[0]?.routes[0]?.path;
           route && goto(route, { replaceState: true });
+          return;
+        }
+        const returnState = searchReturnStates.get(indexerId);
+        if (returnState) {
+          searchReturnStates.delete(indexerId);
+          resources = returnState.resources;
+          query.keyword = returnState.keyword;
+          searchValue = returnState.searchValue;
+          query.filters = returnState.filters ?? null;
+          query.page_num = returnState.pageNum;
+          query.page_size = returnState.pageSize;
+          query.view_mode = returnState.viewMode;
+          viewModes = returnState.viewModes;
+          loggedUser = returnState.loggedUser;
+          pagination.total = returnState.pagination.total;
+          pagination.totalPages = returnState.pagination.totalPages;
+          pagination.simpleMode = returnState.pagination.simpleMode;
+          innerLoading.end();
+          outerLoading.end();
+          _indexerId = indexerId;
+          tick().then(() => restorePosition(standaloneMode.current ? view : window));
           return;
         }
         outerLoading.start();

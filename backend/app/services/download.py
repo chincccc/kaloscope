@@ -185,10 +185,11 @@ class DownloadTaskService(BaseService[DownloadTask], model=DownloadTask):
             comic_tasks = await ComicDownloadTask.filter(*common)
             comic_items = await ComicDownloadService.dump_list(comic_tasks)
             for item in comic_items:
+                task_type = item.get("download_type") or "comic"
                 item.update(
                     {
-                        "task_type": "comic",
-                        "key": f"comic:{item['id']}",
+                        "task_type": task_type,
+                        "key": f"{task_type}:{item['id']}",
                         "downloader_id": None,
                         "magnet_link": None,
                     }

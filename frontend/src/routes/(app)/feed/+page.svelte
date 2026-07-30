@@ -45,10 +45,12 @@
   let touchX = 0;
   let touchY = 0;
   let wheelLocked = false;
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const positions = new Map<number, number>();
   let destroyed = false;
   let firstPlayback = $state(true);
   let resolveReady: (() => void) | null = null;
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const controllers = new Set<AbortController>();
 
   function displayTitle(item: FeedItem) {

@@ -58,9 +58,7 @@
     if (!name || dimensionSaving) return;
     dimensionSaving = true;
     try {
-      const response = await api
-        .post('rating/dimensions', { json: { name } })
-        .json<Resp<RatingDimension>>();
+      const response = await api.post('rating/dimensions', { json: { name } }).json<Resp<RatingDimension>>();
       ratingDimensions = [...ratingDimensions, response.data];
       dimensionName = '';
     } finally {
@@ -152,10 +150,17 @@
       <div class="mt-3 divide-y divide-base-300">
         {#each ratingDimensions as dimension (dimension.key)}
           <div class="flex min-h-11 items-center gap-3 py-2">
-            <iconify-icon icon={dimension.removable ? icons.star : icons.lockClosed} width="1.1rem" class="opacity-55"></iconify-icon>
+            <iconify-icon icon={dimension.removable ? icons.star : icons.lockClosed} width="1.1rem" class="opacity-55"
+            ></iconify-icon>
             <span class="min-w-0 flex-1 truncate">{dimension.name}</span>
             {#if dimension.removable}
-              <button class="btn btn-circle btn-ghost btn-sm" disabled={dimensionSaving} aria-label={$_('preference.rating.remove', { values: { name: dimension.name } })} title={$_('preference.rating.remove', { values: { name: dimension.name } })} onclick={() => void removeRatingDimension(dimension)}>
+              <button
+                class="btn btn-circle btn-ghost btn-sm"
+                disabled={dimensionSaving}
+                aria-label={$_('preference.rating.remove', { values: { name: dimension.name } })}
+                title={$_('preference.rating.remove', { values: { name: dimension.name } })}
+                onclick={() => void removeRatingDimension(dimension)}
+              >
                 <iconify-icon icon={icons.delete} width="1.1rem"></iconify-icon>
               </button>
             {:else}

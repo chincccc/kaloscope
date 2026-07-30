@@ -182,7 +182,7 @@ async def delete_combined_tasks(_, body: DownloadDel) -> HTTPResponse:
         task_type, separator, task_id = str(value).partition(":")
         if not separator or not task_id.isdigit():
             raise KaloscopeException(ErrorCode.BAD_REQUEST)
-        if task_type == "comic":
+        if task_type in {"comic", "video", "hls"}:
             await ComicDownloadService.delete(int(task_id), body.local)
         elif task_type == "torrent":
             await DownloadTaskService.delete(int(task_id), body.local)
@@ -195,7 +195,7 @@ async def delete_combined_tasks(_, body: DownloadDel) -> HTTPResponse:
 @authorize(role=UserRole.ADMIN)
 @validate(query=ComicDownloadQuery)
 async def list_comic_tasks(_, query: ComicDownloadQuery) -> HTTPResponse:
-    queries = []
+    queries = [Q(download_type="comic")]
     if query.name:
         queries.append(Q(name__icontains=query.name))
     if query.state:
@@ -206,6 +206,7 @@ async def list_comic_tasks(_, query: ComicDownloadQuery) -> HTTPResponse:
     return json(await ComicDownloadService.dump_page(page))
 
 
+@download.post("/builtin/add", name="add_builtin_task")
 @download.post("/comic/add")
 @authorize(role=UserRole.ADMIN)
 @validate(json=ComicDownloadAdd)
@@ -214,6 +215,7 @@ async def add_comic_task(_, body: ComicDownloadAdd) -> HTTPResponse:
     return json(await ComicDownloadService.dump(task))
 
 
+@download.post("/builtin/pause", name="pause_builtin_tasks")
 @download.post("/comic/pause")
 @authorize(role=UserRole.ADMIN)
 @validate(json=IDs)
@@ -223,6 +225,7 @@ async def pause_comic_tasks(_, body: IDs) -> HTTPResponse:
     return empty()
 
 
+@download.post("/builtin/start", name="start_builtin_tasks")
 @download.post("/comic/start")
 @authorize(role=UserRole.ADMIN)
 @validate(json=IDs)
@@ -232,6 +235,7 @@ async def start_comic_tasks(_, body: IDs) -> HTTPResponse:
     return empty()
 
 
+@download.post("/builtin/delete", name="delete_builtin_tasks")
 @download.post("/comic/delete")
 @authorize(role=UserRole.ADMIN)
 @validate(json=ComicDownloadDel)

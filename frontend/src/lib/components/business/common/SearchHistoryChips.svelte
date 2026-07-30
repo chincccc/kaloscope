@@ -51,8 +51,8 @@
   }
 
   $effect(() => {
-    relId;
-    maxItems;
+    void relId;
+    void maxItems;
     untrack(() => void refresh());
   });
 </script>
