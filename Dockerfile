@@ -18,6 +18,8 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 
 # build the static pages for production
+ARG NODE_OPTIONS=--max-old-space-size=4096
+ENV NODE_OPTIONS=${NODE_OPTIONS}
 RUN pnpm run build
 
 # ============================================================
