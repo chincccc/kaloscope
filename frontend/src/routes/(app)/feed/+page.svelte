@@ -48,7 +48,6 @@
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const positions = new Map<number, number>();
   let destroyed = false;
-  let firstPlayback = $state(true);
   let resolveReady: (() => void) | null = null;
   // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const controllers = new Set<AbortController>();
@@ -88,7 +87,6 @@
   }
 
   function playerReady() {
-    firstPlayback = false;
     switching = false;
     resolveReady?.();
     resolveReady = null;
@@ -216,7 +214,6 @@
         for (const [id, position] of restored.positions) {
           positions.set(id, position);
         }
-        firstPlayback = false;
         await show(restored.current, 'next');
         if (!queued) void prefetch();
       } else {
@@ -268,7 +265,7 @@
             uploader={current.parent_name ?? ''}
             startTime={positions.get(current.id)}
             randomStart={!positions.has(current.id) && Boolean($user?.preferences?.feed_random_start)}
-            muted={firstPlayback}
+            muted={false}
             onready={playerReady}
           />
         </div>

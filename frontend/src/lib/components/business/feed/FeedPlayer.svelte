@@ -33,7 +33,7 @@
         await player?.mount({
           url: buildStreamUrl(path),
           autoplay: true,
-          autoplayFallbackMuted: true,
+          autoplayFallbackMuted: false,
           muted,
           startTime,
           randomStart,
