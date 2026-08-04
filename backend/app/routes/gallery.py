@@ -8,7 +8,7 @@ from sanic_ext import validate
 from tortoise.expressions import Q
 
 from app.core.decorators import authorize
-from app.core.exceptions import ErrorCode, ForbiddenException
+from app.core.exceptions import ErrorCode, ForbiddenException, KaloscopeException
 from app.core.gallery_archive import resolve_gallery_image
 from app.core.gallery_thumbnail import ensure_gallery_thumbnail
 from app.models.base import IDs, ResourceRename
@@ -34,6 +34,23 @@ def permitted_item_filters(request: Request, id: int) -> list[Q]:
     if user.perms is not None:
         filters.append(Q(gallery_id__in=user.perms.gallery_ids))
     return filters
+
+
+async def recover_missing_item(item: GalleryItem) -> GalleryItem | None:
+    """Refresh the gallery and find a current row for the same book."""
+    return await GalleryService.recover_item(item)
+
+
+async def resolve_item_image(item: GalleryItem) -> tuple[GalleryItem, Path]:
+    try:
+        return item, await resolve_gallery_image(item.path)
+    except KaloscopeException as exc:
+        if exc.message != ErrorCode.FILE_NOT_EXISTS:
+            raise
+    replacement = await recover_missing_item(item)
+    if replacement is None:
+        raise KaloscopeException(ErrorCode.FILE_NOT_EXISTS)
+    return replacement, await resolve_gallery_image(replacement.path)
 
 
 @gallery.get("/lib/list")
@@ -169,6 +186,16 @@ async def get_reader_context(request: Request, id: int) -> HTTPResponse:
     if not selected:
         raise ForbiddenException(ErrorCode.PERMISSION_DENIED)
 
+    try:
+        await resolve_gallery_image(selected.path)
+    except KaloscopeException as exc:
+        if exc.message != ErrorCode.FILE_NOT_EXISTS:
+            raise
+        replacement = await recover_missing_item(selected)
+        if replacement is None:
+            raise KaloscopeException(ErrorCode.FILE_NOT_EXISTS) from exc
+        selected = replacement
+
     library = await Gallery.get(id=selected.gallery_id)
     values = await GalleryItem.filter(gallery_id=library.id).values("id", "dir", "name")
     book_key = gallery_book_key(library.dir, selected.dir)
@@ -241,7 +268,7 @@ async def get_image(request: Request, id: int) -> HTTPResponse | ResponseStream:
     item = await GalleryItem.filter(*permitted_item_filters(request, id)).get_or_none()
     if not item:
         raise ForbiddenException(ErrorCode.PERMISSION_DENIED)
-    path = await resolve_gallery_image(item.path)
+    item, path = await resolve_item_image(item)
     content_type, _ = mimetypes.guess_file_type(item.name)
     return await file_stream(
         path,
@@ -256,7 +283,7 @@ async def get_cover(request: Request, id: int) -> HTTPResponse | ResponseStream:
     item = await GalleryItem.filter(*permitted_item_filters(request, id)).get_or_none()
     if not item:
         raise ForbiddenException(ErrorCode.PERMISSION_DENIED)
-    source = await resolve_gallery_image(item.path)
+    item, source = await resolve_item_image(item)
     path = await ensure_gallery_thumbnail(item.id, source)
     return await file_stream(
         path,

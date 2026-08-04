@@ -11,7 +11,7 @@ from app.core.gallery_archive import (
     resolve_gallery_image,
 )
 from app.core.gallery_thumbnail import gallery_thumbnail_fingerprint
-from app.models.gallery import GalleryItem
+from app.models.gallery import Gallery, GalleryItem
 from app.services.gallery import (
     GalleryService,
     build_book_index,
@@ -286,3 +286,27 @@ def test_gallery_thumbnail_fingerprint_changes_with_source(tmp_path):
     source.write_bytes(b"second version")
 
     assert gallery_thumbnail_fingerprint(source) != first
+
+
+def test_recover_item_returns_first_current_item_from_same_book(monkeypatch):
+    stale = Mock(id=10, gallery_id=1, dir="/library/Book 2/old")
+    replacement = Mock(id=21)
+    query = Mock()
+    query.values = AsyncMock(
+        return_value=[
+            {"id": 31, "dir": "/library/Book 10", "name": "001.jpg"},
+            {"id": 22, "dir": "/library/Book 2", "name": "10.jpg"},
+            {"id": 21, "dir": "/library/Book 2", "name": "2.jpg"},
+        ]
+    )
+    monkeypatch.setattr(
+        Gallery, "get", AsyncMock(return_value=Mock(id=1, dir="/library"))
+    )
+    monkeypatch.setattr(GalleryService, "refresh_now", AsyncMock())
+    monkeypatch.setattr(GalleryItem, "filter", Mock(return_value=query))
+    monkeypatch.setattr(GalleryItem, "get_or_none", AsyncMock(return_value=replacement))
+
+    recovered = asyncio.run(GalleryService.recover_item(stale))
+
+    assert recovered is replacement
+    GalleryItem.get_or_none.assert_awaited_once_with(id=21)

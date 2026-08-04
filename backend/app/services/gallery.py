@@ -315,6 +315,45 @@ class GalleryService(BaseService[Gallery], model=Gallery):
         return books
 
     @classmethod
+    async def refresh_now(cls, id: int):
+        """Synchronously refresh a gallery, waiting for an active background scan."""
+        task = cls._scan_tasks.get(id)
+        if task is not None:
+            await task
+            return
+        try:
+            await cls.scan(id)
+        except KaloscopeException as exc:
+            if exc.message != ErrorCode.SCAN_IN_PROGRESS:
+                raise
+
+    @classmethod
+    async def recover_item(cls, item: GalleryItem) -> GalleryItem | None:
+        """Return the current row replacing a stale gallery item, if one exists."""
+        gallery = await Gallery.get(id=item.gallery_id)
+        book_key = gallery_book_key(gallery.dir, item.dir)
+        await cls.refresh_now(gallery.id)
+        values = await GalleryItem.filter(gallery_id=gallery.id).values(
+            "id", "dir", "name"
+        )
+        candidates = [
+            value
+            for value in values
+            if gallery_book_key(gallery.dir, value["dir"]) == book_key
+        ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda value: natural_sort_key(
+                "/".join((*relative_parts(gallery.dir, value["dir"]), value["name"]))
+            )
+        )
+        replacement_id = candidates[0]["id"]
+        if replacement_id == item.id:
+            return item
+        return await GalleryItem.get_or_none(id=replacement_id)
+
+    @classmethod
     async def rename_book(cls, item_id: int, name: str) -> dict:
         """Rename the first-level directory represented by a gallery book."""
         async with cls._RENAME_LOCK:
