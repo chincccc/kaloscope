@@ -2,7 +2,7 @@ from typing import Any, cast
 
 import httpx
 from curl_cffi import AsyncSession
-from curl_cffi.requests.exceptions import RequestException
+from curl_cffi.requests.exceptions import RequestException, SSLError
 from curl_cffi.requests.session import HttpMethod
 from sanic import Sanic
 from sanic.log import logger
@@ -113,46 +113,58 @@ class HTTPNode(Node):
             if json is None and form is None:
                 binary = body.encode(ENCODING)
 
+        async def request_with_httpx():
+            httpx_client: httpx.AsyncClient = app_ctx.httpx
+            httpx_response = await httpx_client.request(
+                method,
+                url,
+                headers=headers,
+                content=binary,
+                data=form,
+                json=json,
+                extensions=extensions,
+            )
+            if httpx_response.extensions.get("hishel_from_cache"):
+                logger.debug(
+                    'HTTP Response: served from cache "%s %s"',
+                    httpx_response.http_version,
+                    httpx_response.status_code,
+                )
+            return httpx_response
+
         # make the request
         app_ctx = Sanic.get_app().ctx
         try:
             if cls.client.extract(node_data) == "curl_cffi":
                 # use curl_cffi client
                 curl_client: AsyncSession = app_ctx.curl_cffi
-                response = await curl_client.request(
-                    method,
-                    url,
-                    headers=[
-                        (key, value)
-                        for key, value in headers.multi_items()
-                        if key.lower() not in _IMPERSONATION_HEADERS
-                    ],
-                    data=cast(
-                        dict[str, str] | bytes | None,
-                        binary if binary is not None else form,
-                    ),
-                    json=cast(dict[str, Any] | list[Any] | None, json),
-                    proxy=await resolve_proxy(url),
-                    impersonate="chrome",
-                )
+                try:
+                    response = await curl_client.request(
+                        method,
+                        url,
+                        headers=[
+                            (key, value)
+                            for key, value in headers.multi_items()
+                            if key.lower() not in _IMPERSONATION_HEADERS
+                        ],
+                        data=cast(
+                            dict[str, str] | bytes | None,
+                            binary if binary is not None else form,
+                        ),
+                        json=cast(dict[str, Any] | list[Any] | None, json),
+                        proxy=await resolve_proxy(url),
+                        impersonate="chrome",
+                    )
+                except SSLError:
+                    logger.warning(
+                        "curl_cffi TLS handshake failed for %s; retrying with httpx.",
+                        url,
+                        exc_info=True,
+                    )
+                    response = await request_with_httpx()
             else:
                 # use HTTPX client
-                httpx_client: httpx.AsyncClient = app_ctx.httpx
-                response = await httpx_client.request(
-                    method,
-                    url,
-                    headers=headers,
-                    content=binary,
-                    data=form,
-                    json=json,
-                    extensions=extensions,
-                )
-                if response.extensions.get("hishel_from_cache"):
-                    logger.debug(
-                        'HTTP Response: served from cache "%s %s"',
-                        response.http_version,
-                        response.status_code,
-                    )
+                response = await request_with_httpx()
 
             formatter = cls.formatter.extract(node_data)
             # merge the rendered response into context
