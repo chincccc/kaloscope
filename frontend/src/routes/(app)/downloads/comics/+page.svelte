@@ -37,7 +37,7 @@
           page_num: page,
           page_size: size,
           name: keyword,
-          state: taskState
+          ...(taskState ? { state: taskState } : {})
         }
       })
       .json<Resp<Page<ComicDownloadTask>>>()

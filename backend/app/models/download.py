@@ -10,6 +10,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     field_serializer,
+    field_validator,
     model_validator,
 )
 from sanic.request.form import File
@@ -370,6 +371,13 @@ class ComicDownloadQuery(Pageable):
     name: str | None = None
     state: DownloadState | None = None
     states: list[DownloadState] | None = None
+
+    @field_validator("state", mode="before")
+    @classmethod
+    def normalize_empty_state(cls, value):
+        if value in {"", "null", "undefined", None}:
+            return None
+        return value
 
 
 class ComicDownloadDel(IDs):
